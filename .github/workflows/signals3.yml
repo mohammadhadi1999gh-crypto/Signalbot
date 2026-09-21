@@ -1,0 +1,62 @@
+name: signals
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"      # every 5 minutes (GitHub may delay runs)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "once = scan | check = test connection"
+        default: "check"
+
+concurrency:
+  group: signals
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            state.json
+            stats.json
+          key: botstate-${{ github.run_id }}
+          restore-keys: botstate-
+
+      - name: run bot
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EXCHANGE: okx
+          SCAN_BACK: "1"
+          MAX_AGE_MIN: "25"
+          SENSITIVITY: aggressive # conservative | balanced | aggressive
+          TRENDLINES: "1"
+          SPIKE_HUNTER: "1"
+          HUNTER_LIMITS: "1"
+        run: python bot.py ${{ github.event.inputs.mode || 'once' }}
+
+      - name: save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            state.json
+            stats.json
+          key: botstate-${{ github.run_id }}
