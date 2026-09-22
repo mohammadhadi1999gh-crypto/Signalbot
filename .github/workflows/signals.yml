@@ -50,7 +50,7 @@ jobs:
           SPIKE_HUNTER: "1"
           HUNTER_LIMITS: "1"
           WORKERS: "10"
-          EXCHANGE: kcex          # okx | binance | kcex
+          EXCHANGE: okx          # okx | binance | kcex
           AUTO_UNIVERSE: "1"      # scan top KCEX gainers automatically instead of a fixed list
           UNIVERSE_SIZE: "150"   # raise further to scan more of the market; more calls = slower + more rate-limit risk
           GRID_STRATEGY: "1"      # Pump-Fade Grid (reverse-engineered fixed-ratio short)
