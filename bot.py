@@ -1,38 +1,51 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Signal Bot — Trendline Break Short (Pump Fade) با نقطه ورود معلق (Pending Retest)
------------------------------------------------------------------------------------
-استراتژی:
-  1) قیمت یک پامپ (روند صعودی قوی) می‌زند.
-  2) روی سقف‌های همین پامپ یک ترندلاین صعودی/تقریباً افقی رسم می‌شود
-     (با اتصال حداقل دو سقف پیوتال).
-  3) وقتی یک کندل با تایید (بسته شدن کندل) این ترندلاین را به سمت پایین
-     می‌شکند، ضعف پامپ تایید می‌شود.
-  4) به‌جای ورود آنی، ربات یک سیگنال «معلق» (Pending) با Entry نزدیک سقف
-     همان پامپ صادر می‌کند — یعنی منتظر می‌ماند قیمت دوباره به همان سقف
-     برگردد (ری‌تست خط شکسته‌شده) و از آنجا ریزش کند. به همین دلیل نقطه
-     ورود گاهی خیلی زود (نزدیک قیمت لحظه‌ای) و گاهی تا چند روز بعد لمس
-     می‌شود؛ ولی چون سطح، سطح مقاومتِ تایید‌شده‌ای است، وقتی لمس شود
-     معمولاً ریزش سریع رخ می‌دهد و احتمال خوردن SL پایین می‌آید.
+اتاق شکار 🏹 — Signal Bot v3 (Trendline Break Short + Pending Retest + فیلترهای ضدترند)
+------------------------------------------------------------------------------------------
+چرا این نسخه ساخته شد:
+  نسخه‌ی قبلی گاهی وقتی بازار واقعاً در یک روند صعودی قوی بود هم سیگنال شورت
+  می‌داد و SL می‌خورد. این نسخه چند فیلتر سخت‌گیرانه‌ی اضافه دارد که هدفشان
+  دقیقاً جلوگیری از همین حالت است (نه حذف کامل ریسک؛ هیچ استراتژی‌ای این
+  تضمین را نمی‌دهد):
 
-قابلیت‌های اضافه:
-  - وقتی سیگنالی معلق فعال (لمس) می‌شود، ربات روی همان پیام سیگنال Reply
-    می‌زند و اعلام می‌کند سیگنال فعال شد.
-  - در ادامه هر بار TP زده شود یا SL بخورد، دوباره روی همان پیام Reply
-    می‌زند و می‌گوید کدام TP و چند درصد سود/ضرر شده.
-  - اگر سیگنال معلق ظرف مهلت مشخص (پیش‌فرض چند روز) اصلاً لمس نشود،
-    منقضی اعلام می‌شود و در آمار برد/باخت شمرده نمی‌شود.
-  - هر جمعه، گزارش عملکرد هفتگی (وین ریت + بازدهی کل) برای همه چت‌ها
-    ارسال می‌شود.
+  1) فیلتر روند تایم‌فریم بالاتر (HTF): اگر تایم‌فریم بالاتر (1h برای سیگنال‌های
+     15m، 4h برای سیگنال‌های 1h) خودش در روند صعودی قوی باشد، اصلاً سیگنال
+     شورت صادر نمی‌شود — چون فید کردن یک پامپ در دل یک روند صعودی واقعی،
+     دقیقاً همان چیزی است که باعث خوردن SL می‌شود.
+  2) واگرایی نزولی RSI و/یا کندل بازگشتی (پین‌بار / انگالف نزولی) در نقطه‌ی
+     سقف پامپ: حداقل یکی از این دو باید تایید کند که مومنتوم صعودی واقعاً
+     ضعیف شده، نه اینکه فقط قیمت مکث کرده.
+  3) کنسل‌ زودهنگام: اگر بعد از صدور سیگنال معلق، قیمت با یک کندل قاطع
+     (بسته‌شدن قطعی) بالاتر از سقف برود، سیگنال به‌جای رسیدن به SL واقعی
+     همان لحظه «کنسل شده❌» اعلام می‌شود.
+  4) فعال‌سازی بر اساس کندل، نه فقط برخورد لحظه‌ای قیمت: وقتی قیمت به نقطه‌ی
+     ورود می‌رسد، تنها اگر همان کندل با رد شدن (Rejection) بسته شود سیگنال
+     «فعال شده» اعلام می‌شود؛ اگر کندل بالای نقطه ورود بسته شود، به‌جای
+     فعال‌سازی، بررسی کنسل‌شدن انجام می‌شود.
+
+استراتژی پایه (ری‌تست شکست ترندلاین):
+  پامپ شناسایی می‌شود -> ترندلاین از دو سقف پیوتال پامپ رسم می‌شود -> شکست
+  تاییدشده‌ی این خط به سمت پایین رصد می‌شود -> Entry به‌صورت سفارش معلق روی
+  سقف همان پامپ گذاشته می‌شود (منتظر ری‌تست) -> با لمس + تایید کندلی، سیگنال
+  فعال و TP/SL دنبال می‌شود.
+
+وضعیت هر سیگنال به‌صورت پیام جداگانه‌ی Pin‌شونده زیر همان سیگنال منتشر می‌شود:
+  🦭 فعال نشده -> ✅💯 فعال شده -> بسته شده با سود / بسته شده با ضرر
+  یا در هر مرحله -> ❌ کنسل شده
+
+گزارش‌ها (به وقت تهران):
+  - هر روز ساعت 23:59: گزارش عملکرد همان روز
+  - هر جمعه ساعت 10:00: گزارش عملکرد کل هفته
 
 دستورات:
-  python bot.py run             # اجرای دائمی (اسکن سیگنال + ردیابی + گزارش هفتگی)
-  python bot.py once            # یک بار اسکن (بدون حلقه دائمی)
-  python bot.py check           # تست اتصال صرافی + تلگرام
+  python bot.py run             # اجرای دائمی (برای سرور/VPS)
+  python bot.py once            # یک‌بار اسکن + مانیتور + چک گزارش‌ها (برای GitHub Actions/کرون)
+  python bot.py check           # تست اتصال صرافی + تلگرام (پیام واقعی نمی‌فرستد)
   python bot.py setup           # ویزارد تنظیم توکن و chat id
-  python bot.py test-telegram   # ارسال پیام تست
-  python bot.py report          # ارسال دستی گزارش هفتگی (برای تست)
+  python bot.py test-telegram   # ارسال پیام تست واقعی به تلگرام
+  python bot.py daily-report    # ارسال دستی گزارش روزانه (تست)
+  python bot.py weekly-report   # ارسال دستی گزارش هفتگی (تست)
   python bot.py install-service # سرویس systemd برای اجرای دائمی روی سرور
 
 افزودن --dry یعنی ارسال نکن، فقط چاپ کن.
@@ -45,6 +58,12 @@ import pandas as pd
 import requests
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+TEHRAN_TZ = timezone(timedelta(hours=3, minutes=30))   # ایران از ۲۰۲۲ ساعت تابستانی ندارد
+
+
+def now_tehran():
+    return datetime.now(TEHRAN_TZ)
+
 
 # ----------------------------------------------------------------------------
 # تنظیمات
@@ -59,6 +78,7 @@ def load_env(path=os.path.join(HERE, ".env")):
         k, v = line.split("=", 1)
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
+
 load_env()
 
 
@@ -70,13 +90,16 @@ class CFG:
     token = os.getenv("TELEGRAM_TOKEN", "")
     chat_ids = [x.strip() for x in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if x.strip()]
     send_chart = os.getenv("SEND_CHART", "1") == "1"
+    pin_status = os.getenv("PIN_STATUS", "1") == "1"
 
     exchange = os.getenv("EXCHANGE", "okx").lower()          # okx | binance
     okx_base = os.getenv("OKX_BASE", "https://www.okx.com")
     fapi_base = os.getenv("BINANCE_FAPI_BASE", "https://fapi.binance.com")
     futures_only = os.getenv("FUTURES_ONLY", "1") == "1"
     label = "OKX" if exchange == "okx" else "Binance"
-    handle = os.getenv("CHANNEL_HANDLE", "@signallroom_bot")
+
+    brand_name = os.getenv("BRAND_NAME", "🏹 اتاق شکار")
+    handle = os.getenv("CHANNEL_HANDLE", "@signallroom")
 
     symbols = [s.strip().upper() for s in os.getenv(
         "SYMBOLS",
@@ -85,30 +108,39 @@ class CFG:
     ).split(",") if s.strip()]
 
     leverage = _f("LEVERAGE", 20)
-    max_sl_pct = _f("MAX_SL_PCT", 3.0) / 100      # حداکثر فاصله SL از ورود (نسبت به قیمت)
+    max_sl_pct = _f("MAX_SL_PCT", 3.0) / 100
     scan_back = _f("SCAN_BACK", 1)
     max_age_min = _f("MAX_AGE_MIN", 25)
     cooldown_candles = _f("COOLDOWN_CANDLES", 6)
 
-    # --- پارامترهای استراتژی «شکست ترندلاین بعد از پامپ» ---
-    pump_lookback = _f("PUMP_LOOKBACK", 120)      # چند کندل به عقب برای پیدا کردن شروع پامپ
-    pump_min_bars = _f("PUMP_MIN_BARS", 6)        # حداقل طول پامپ (تعداد کندل)
-    pump_min_pct = _f("PUMP_MIN_PCT", 6.0) / 100  # حداقل درصد رشد پامپ (کف تا سقف)
+    # --- پارامترهای پایه‌ی استراتژی «شکست ترندلاین بعد از پامپ» ---
+    pump_lookback = _f("PUMP_LOOKBACK", 120)
+    pump_min_bars = _f("PUMP_MIN_BARS", 6)
+    pump_min_pct = _f("PUMP_MIN_PCT", 6.0) / 100
     pivot_left = _f("PIVOT_LEFT", 2)
     pivot_right = _f("PIVOT_RIGHT", 2)
-    break_buffer_atr = _f("BREAK_BUFFER_ATR", 0.15)   # حداقل عمق شکست خط (ضریب ATR)
-    sl_buffer_atr = _f("SL_BUFFER_ATR", 0.5)          # فاصله SL بالای سقف پامپ (ضریب ATR)
-    retest_buffer_atr = _f("RETEST_BUFFER_ATR", 0.3)  # فاصله نقطه ورود (ری‌تست) پایین‌تر از سقف دقیق (ضریب ATR)
-    min_score = _f("MIN_SCORE", 4)                    # حداقل امتیاز نهایی (از 6)
-    enable_long = os.getenv("ENABLE_LONG", "0") == "1"  # حالت قرینه (شکست خط نزولی بعد دامپ) - پیش‌فرض خاموش
+    break_buffer_atr = _f("BREAK_BUFFER_ATR", 0.15)
+    sl_buffer_atr = _f("SL_BUFFER_ATR", 0.5)
+    retest_buffer_atr = _f("RETEST_BUFFER_ATR", 0.3)
+    cancel_buffer_atr = _f("CANCEL_BUFFER_ATR", 1.0)   # عبور قاطع از این فاصله بالای سقف = کنسل
+    enable_long = os.getenv("ENABLE_LONG", "0") == "1"
+
+    # --- فیلترهای ضدترند (جدید) ---
+    require_htf_filter = os.getenv("REQUIRE_HTF_FILTER", "1") == "1"   # ممنوعیت شورت روی روند صعودی قوی تایم بالاتر
+    require_confirmation = os.getenv("REQUIRE_CONFIRMATION", "1") == "1"  # الزام واگرایی یا کندل بازگشتی
+    volume_climax_mult = _f("VOLUME_CLIMAX_MULT", 1.2)
+    min_score = _f("MIN_SCORE", 7)      # از 10 (سخت‌گیرانه‌تر از قبل)
 
     # --- ردیابی سیگنال‌های فعال ---
     monitor_interval_sec = _f("MONITOR_INTERVAL_SEC", 45)
-    pending_max_days = _f("PENDING_MAX_DAYS", 3.0)   # حداکثر زمان انتظار برای لمس نقطه ورود (روز)
+    pending_max_days = _f("PENDING_MAX_DAYS", 3.0)
 
-    # --- گزارش هفتگی ---
-    weekly_report_dow = _f("WEEKLY_REPORT_DOW", 4)     # 0=دوشنبه ... 4=جمعه (پایتون: Mon=0 ... Fri=4)
-    weekly_report_hour = _f("WEEKLY_REPORT_HOUR", 18)  # ساعت UTC ارسال گزارش
+    # --- گزارش‌ها (به وقت تهران) ---
+    daily_report_hour = _f("DAILY_REPORT_HOUR", 23)
+    daily_report_minute = _f("DAILY_REPORT_MINUTE", 59)
+    weekly_report_dow = _f("WEEKLY_REPORT_DOW", 4)         # 0=دوشنبه ... 4=جمعه
+    weekly_report_hour = _f("WEEKLY_REPORT_HOUR", 10)
+    weekly_report_minute = _f("WEEKLY_REPORT_MINUTE", 0)
 
     stats_ttl_h = _f("STATS_TTL_HOURS", 12)
 
@@ -223,11 +255,12 @@ def prep(df):
 
 
 def htf_pack(df, tf):
+    """روند EMA50/EMA200 تایم‌فریم بالاتر؛ برای فیلتر «آیا داریم برخلاف یک روند واقعی معامله می‌کنیم؟»"""
     c = df.close
     e50 = c.ewm(span=50, adjust=False).mean()
     e200 = c.ewm(span=200, adjust=False).mean()
     trend = np.where((c > e50) & (e50 > e200), 1, np.where((c < e50) & (e50 < e200), -1, 0))
-    return dict(tc=df.time.values + TF_MS[tf], trend=trend, df=df)
+    return dict(tc=df.time.values + TF_MS[tf], trend=trend)
 
 
 def trend_at(H, t_close):
@@ -236,7 +269,6 @@ def trend_at(H, t_close):
 
 
 def pivot_idx(arr, left, right, kind="high"):
-    """اندیس نقاط پیوت (سقف یا کف) در یک آرایه قیمتی."""
     out = []
     n = len(arr)
     for i in range(left, n - right):
@@ -250,11 +282,24 @@ def pivot_idx(arr, left, right, kind="high"):
     return out
 
 
-# ----------------------------------------------------------------------------
-# استراتژی: شکست ترندلاین بعد از پامپ (Trendline Break Short / Pump Fade)
-# ----------------------------------------------------------------------------
+def pivot_levels(h, l, atr_val, left=4, right=4):
+    pts = []
+    for i in range(left, len(h) - right):
+        if h[i] == h[i - left:i + right + 1].max():
+            pts.append(h[i])
+        if l[i] == l[i - left:i + right + 1].min():
+            pts.append(l[i])
+    pts.sort()
+    tol, cl = 0.5 * atr_val, []
+    for p in pts:
+        if cl and p - np.mean(cl[-1]) <= tol:
+            cl[-1].append(p)
+        else:
+            cl.append([p])
+    return [float(np.mean(x)) for x in cl if len(x) >= 2]
+
+
 def _fit_trendline(idxs, prices):
-    """رگرسیون خطی ساده روی نقاط پیوت برای رسم ترندلاین."""
     x = np.array(idxs, dtype=float)
     y = np.array(prices, dtype=float)
     if len(x) < 2:
@@ -263,10 +308,47 @@ def _fit_trendline(idxs, prices):
     return slope, intercept
 
 
-def detect_trendline_break(P, t, side, extra_levels=()):
+def upper_wick_ratio(o, h, l, c, i):
+    rng = h[i] - l[i]
+    if rng <= 0:
+        return 0.0
+    return (h[i] - max(o[i], c[i])) / rng
+
+
+def lower_wick_ratio(o, h, l, c, i):
+    rng = h[i] - l[i]
+    if rng <= 0:
+        return 0.0
+    return (min(o[i], c[i]) - l[i]) / rng
+
+
+def is_bearish_reversal(o, h, l, c, i):
+    """پین‌بار/شوتینگ‌استار (سایه‌ی بالا بلند) یا انگالف نزولی نسبت به کندل قبل."""
+    if upper_wick_ratio(o, h, l, c, i) >= 0.45:
+        return True
+    if i > 0 and c[i - 1] > o[i - 1] and c[i] < o[i]:      # کندل قبل سبز، این کندل قرمز
+        if c[i] <= o[i - 1] and o[i] >= c[i - 1]:          # بدنه‌ی کندل قبل را کامل می‌بلعد
+            return True
+    return False
+
+
+def is_bullish_reversal(o, h, l, c, i):
+    if lower_wick_ratio(o, h, l, c, i) >= 0.45:
+        return True
+    if i > 0 and c[i - 1] < o[i - 1] and c[i] > o[i]:
+        if c[i] >= o[i - 1] and o[i] <= c[i - 1]:
+            return True
+    return False
+
+
+# ----------------------------------------------------------------------------
+# استراتژی: شکست ترندلاین بعد از پامپ + نقطه ورود معلق (ری‌تست) + فیلترهای ضدترند
+# ----------------------------------------------------------------------------
+def detect_trendline_break(P, t, side, extra_levels=(), htf_trend=0):
     """
-    side = -1 : شکست ترندلاین بالای یک پامپ => سیگنال Short (استراتژی اصلی کانال)
-    side = +1 : حالت قرینه، شکست ترندلاین زیر یک دامپ => سیگنال Long (اختیاری، ENABLE_LONG)
+    side = -1 : شکست ترندلاین بالای یک پامپ => سیگنال Short (استراتژی اصلی)
+    side = +1 : حالت قرینه، شکست ترندلاین زیر یک دامپ => سیگنال Long (اختیاری)
+    htf_trend : روند تایم‌فریم بالاتر در لحظه‌ی سیگنال (+1 صعودی قوی، -1 نزولی قوی، 0 خنثی)
     """
     o, h, l, c, v, vs, atr, rsi = P["o"], P["h"], P["l"], P["c"], P["v"], P["vsma"], P["atr"], P["rsi"]
     a = atr[t]
@@ -276,7 +358,11 @@ def detect_trendline_break(P, t, side, extra_levels=()):
     w0 = max(0, t - CFG.pump_lookback)
 
     if side == -1:
-        # نقطه شروع پامپ = کف قیمت در بازه لوک‌بک
+        # فیلتر روند تایم بالاتر: اگر خودِ تایم‌فریم بالاتر صعودی قوی است، این پامپ
+        # احتمالاً بخشی از یک روند واقعی است، نه یک نوسان قابل فید — رد کن.
+        if CFG.require_htf_filter and htf_trend == 1:
+            return None
+
         L = w0 + int(np.argmin(l[w0:t + 1]))
         if t - L < CFG.pump_min_bars:
             return None
@@ -288,42 +374,44 @@ def detect_trendline_break(P, t, side, extra_levels=()):
 
         piv = [i + L for i in pivot_idx(h[L:t + 1], CFG.pivot_left, CFG.pivot_right, "high")]
         mid_level = pump_low + 0.5 * (pump_high - pump_low)
-        piv = [i for i in piv if i < t and h[i] >= mid_level]   # فقط سقف‌های واقعی خودِ پامپ (نه نویز نزدیک شروع)
+        piv = [i for i in piv if i < t and h[i] >= mid_level]
         if len(piv) < 2:
             return None
         h1, h2 = piv[0], piv[-1]
-        if h2 <= h1:
+        if h2 <= h1 or h[h2] < h[h1]:      # باید واقعاً سقف دوم بالاتر/هم‌سطح باشد
             return None
 
         fit = _fit_trendline([h1, h2], [h[h1], h[h2]])
         if fit is None:
             return None
         slope, intercept = fit
-        if slope < -1e-9:  # طبق استراتژی، خط باید روی سقف‌ها صعودی/تقریباً افقی باشد
+        if slope < -1e-9:
             return None
         line = lambda x: slope * x + intercept
 
         win_start = max(h2, t - 8)
         recently_respected = any(c[k] >= line(k) - CFG.break_buffer_atr * a for k in range(win_start, t))
-        if not recently_respected:          # تازگی شکست: باید اخیراً (حداکثر ۸ کندل قبل) خط رعایت شده باشد
+        if not recently_respected:
             return None
-        if not (c[t] < line(t) - CFG.break_buffer_atr * a):   # شکست معنادار به سمت پایین در کندل تایید
+        if not (c[t] < line(t) - CFG.break_buffer_atr * a):
             return None
-        if c[t] <= pump_low + 0.15 * (pump_high - pump_low):  # پامپ قبلاً کامل فید شده، سیگنال دیر است
+        if c[t] <= pump_low + 0.15 * (pump_high - pump_low):
             return None
 
-        # --- نقطه ورود معلق (Pending Retest) ---
-        # به‌جای ورود آنی روی کندل شکست، منتظر برگشت قیمت به سقف همان پامپ می‌مانیم:
-        # این «سقف» دقیقاً همان جایی است که در توضیح استراتژی به آن اشاره شده («در سقف ریزش می‌کند»).
+        # --- تاییدیه‌ی کندلی / واگرایی (الزامی) ---
+        bearish_divergence = rsi[h2] <= rsi[h1] - 2.0   # سقف بالاتر با RSI پایین‌تر
+        reversal_candle = is_bearish_reversal(o, h, l, c, h2) or is_bearish_reversal(o, h, l, c, t)
+        if CFG.require_confirmation and not (bearish_divergence or reversal_candle):
+            return None
+
         ceiling = max(pump_high, h[h2])
-        entry = float(ceiling - CFG.retest_buffer_atr * a)   # کمی پایین‌تر از نوک سقف، برای افزایش احتمال پر شدن سفارش
-        sl = float(ceiling + CFG.sl_buffer_atr * a)          # ابطال: عبور واقعی و قطعی از سقف
+        entry = float(ceiling - CFG.retest_buffer_atr * a)
+        sl = float(ceiling + CFG.sl_buffer_atr * a)
+        cancel_price = float(ceiling + CFG.cancel_buffer_atr * a)
         R = sl - entry
         if R <= 0 or R / entry > CFG.max_sl_pct or R / entry < 0.001:
             return None
         if entry <= c[t]:
-            # اگر قیمت لحظه سیگنال از سقف عبور نکرده (یعنی هنوز به سمت پایین فاصله دارد)، ورود پایین‌تر
-            # از قیمت فعلی بی‌معنی است؛ سیگنال معتبر نیست.
             return None
 
         rng = pump_high - pump_low
@@ -339,19 +427,20 @@ def detect_trendline_break(P, t, side, extra_levels=()):
             tps.append(tps[-1] - R if tps else entry - R)
         tps = [float(x) for x in tps[:3]]
         if c[t] <= tps[-1]:
-            # قیمت لحظه‌ی سیگنال از قبل به آخرین هدف رسیده؛ دیگر ری‌تستی برای شکار باقی نمانده.
             return None
 
-        # سطوح مقاومت اضافه (تایم‌فریم بالاتر / سقف دیروز) که نباید بین ورود و TP1 مانع شوند نادیده گرفته می‌شود؛
-        # فقط برای امتیازدهی استفاده می‌شود.
         near_res = [x for x in extra_levels if entry * 0.995 <= x <= sl]
-
         vol_ratio = v[t] / vs[t] if vs[t] > 0 else 0
+        vol_climax = (v[h2] / vs[h2]) >= CFG.volume_climax_mult if vs[h2] > 0 else False
+
         comp = dict(
             trendline=2,
             pump=1 if pump_pct >= 2 * CFG.pump_min_pct else 0,
-            volume=1 if vol_ratio >= 1.3 else 0,
-            rsi=1 if rsi[t - 1] >= 55 else 0,
+            htf_ok=1 if htf_trend != 1 else 0,
+            divergence=1 if bearish_divergence else 0,
+            reversal_candle=1 if reversal_candle else 0,
+            volume_climax=1 if vol_climax else 0,
+            breakout_volume=1 if vol_ratio >= 1.3 else 0,
             red_candle=1 if c[t] < o[t] else 0,
             no_extra_res=1 if not near_res else 0,
         )
@@ -359,13 +448,17 @@ def detect_trendline_break(P, t, side, extra_levels=()):
 
         return dict(
             side=-1, entry=entry, sl=sl, tps=tps, R=float(R), atr=float(a),
+            cancel_price=cancel_price,
             pump_low=float(pump_low), pump_high=float(pump_high), pump_pct=float(pump_pct),
             line_pts=[(int(h1), float(h[h1])), (int(h2), float(h[h2]))], slope=float(slope),
             rsi=float(rsi[t]), vol_ratio=float(vol_ratio), comp=comp, score=score,
-            L=int(L),
+            L=int(L), max_score=len(comp) + 1,   # trendline ارزش ۲ دارد
         )
 
-    else:  # side == +1  (حالت قرینه، اختیاری)
+    else:  # side == +1 (حالت قرینه، اختیاری)
+        if CFG.require_htf_filter and htf_trend == -1:
+            return None
+
         L = w0 + int(np.argmax(h[w0:t + 1]))
         if t - L < CFG.pump_min_bars:
             return None
@@ -381,7 +474,7 @@ def detect_trendline_break(P, t, side, extra_levels=()):
         if len(piv) < 2:
             return None
         l1, l2 = piv[0], piv[-1]
-        if l2 <= l1:
+        if l2 <= l1 or l[l2] > l[l1]:
             return None
 
         fit = _fit_trendline([l1, l2], [l[l1], l[l2]])
@@ -401,9 +494,15 @@ def detect_trendline_break(P, t, side, extra_levels=()):
         if c[t] >= dump_high - 0.15 * (dump_high - dump_low):
             return None
 
+        bullish_divergence = rsi[l2] >= rsi[l1] + 2.0
+        reversal_candle = is_bullish_reversal(o, h, l, c, l2) or is_bullish_reversal(o, h, l, c, t)
+        if CFG.require_confirmation and not (bullish_divergence or reversal_candle):
+            return None
+
         floor_ = min(dump_low, l[l2])
         entry = float(floor_ + CFG.retest_buffer_atr * a)
         sl = float(floor_ - CFG.sl_buffer_atr * a)
+        cancel_price = float(floor_ - CFG.cancel_buffer_atr * a)
         R = entry - sl
         if R <= 0 or R / entry > CFG.max_sl_pct or R / entry < 0.001:
             return None
@@ -427,11 +526,16 @@ def detect_trendline_break(P, t, side, extra_levels=()):
 
         near_res = [x for x in extra_levels if sl <= x <= entry * 1.005]
         vol_ratio = v[t] / vs[t] if vs[t] > 0 else 0
+        vol_climax = (v[l2] / vs[l2]) >= CFG.volume_climax_mult if vs[l2] > 0 else False
+
         comp = dict(
             trendline=2,
             dump=1 if dump_pct >= 2 * CFG.pump_min_pct else 0,
-            volume=1 if vol_ratio >= 1.3 else 0,
-            rsi=1 if rsi[t - 1] <= 45 else 0,
+            htf_ok=1 if htf_trend != -1 else 0,
+            divergence=1 if bullish_divergence else 0,
+            reversal_candle=1 if reversal_candle else 0,
+            volume_climax=1 if vol_climax else 0,
+            breakout_volume=1 if vol_ratio >= 1.3 else 0,
             green_candle=1 if c[t] > o[t] else 0,
             no_extra_res=1 if not near_res else 0,
         )
@@ -439,35 +543,16 @@ def detect_trendline_break(P, t, side, extra_levels=()):
 
         return dict(
             side=1, entry=entry, sl=sl, tps=tps, R=float(R), atr=float(a),
+            cancel_price=cancel_price,
             pump_low=float(dump_low), pump_high=float(dump_high), pump_pct=float(dump_pct),
             line_pts=[(int(l1), float(l[l1])), (int(l2), float(l[l2]))], slope=float(slope),
             rsi=float(rsi[t]), vol_ratio=float(vol_ratio), comp=comp, score=score,
-            L=int(L),
+            L=int(L), max_score=len(comp) + 1,
         )
 
 
 # ----------------------------------------------------------------------------
-# سطوح کمکی (S/R تایم‌فریم بالاتر + سقف/کف دیروز)
-# ----------------------------------------------------------------------------
-def pivot_levels(h, l, atr_val, left=4, right=4):
-    pts = []
-    for i in range(left, len(h) - right):
-        if h[i] == h[i - left:i + right + 1].max():
-            pts.append(h[i])
-        if l[i] == l[i - left:i + right + 1].min():
-            pts.append(l[i])
-    pts.sort()
-    tol, cl = 0.5 * atr_val, []
-    for p in pts:
-        if cl and p - np.mean(cl[-1]) <= tol:
-            cl[-1].append(p)
-        else:
-            cl.append([p])
-    return [float(np.mean(x)) for x in cl if len(x) >= 2]
-
-
-# ----------------------------------------------------------------------------
-# چارت (اختیاری) — کندل + ترندلاین شکسته‌شده + ورود/SL/TP
+# چارت (اختیاری)
 # ----------------------------------------------------------------------------
 def make_chart(sym, tf, P, t, sig, bars=110):
     import io
@@ -505,11 +590,12 @@ def make_chart(sym, tf, P, t, sig, bars=110):
 
     hline(sig["entry"], "#e6edf3", "Entry", "--")
     hline(sig["sl"], DN, "SL")
+    hline(sig["cancel_price"], "#8b949e", "Cancel", ":")
     for i, tp in enumerate(sig["tps"]):
         hline(tp, UP, f"TP{i + 1}")
 
     lo = min(l.min(), sig["sl"], sig["tps"][-1])
-    hi = max(h.max(), sig["sl"], sig["pump_high"])
+    hi = max(h.max(), sig["sl"], sig["cancel_price"], sig["pump_high"])
     pad = (hi - lo) * 0.06
     ax.set_ylim(lo - pad, hi + pad)
     ax.set_xlim(n0 - 1, right + 8)
@@ -517,7 +603,7 @@ def make_chart(sym, tf, P, t, sig, bars=110):
     base = sym[:-4] if sym.endswith("USDT") else sym
     ax.set_title(
         f"#{base}/USDT {tf} {'SHORT' if short_ else 'LONG'} | {CFG.label} Futures | "
-        f"شکست ترندلاین بعد از {'پامپ' if short_ else 'دامپ'} | Score {sig['score']}/6",
+        f"شکست ترندلاین + ری‌تست | Score {sig['score']}/{sig['max_score']}",
         color="#ffffff", fontsize=11, fontweight="bold")
     ax.legend(loc="upper left", fontsize=8, facecolor=BG, edgecolor="#30363d", labelcolor=FG)
 
@@ -569,6 +655,7 @@ def build_message(sym, tf, sig, info):
         L.append(f"Tp {i + 1} : {roi(sig['tps'][i], entry)}% {icons[i]} ({fp(sig['tps'][i])})")
     L.append("")
     L.append(f"Stop Loss : {fp(sig['sl'])} ⛔️ (ریسک {risk_pct:.1f}% قیمت)")
+    L.append(f"❌ کنسل‌شدن سیگنال در صورت بسته‌شدن قاطع کندل بالای: {fp(sig['cancel_price'])}")
     L.append("")
     L.append(f"با نیم الی یک درصد سرمایه با اهرم {lev}× وارد شوید 🏦")
     L.append(f"تی پی‌ها با اهرم {lev}× محاسبه شده")
@@ -576,21 +663,40 @@ def build_message(sym, tf, sig, info):
     L.append("📊 تحلیل:")
     L.append(f"• {'پامپ' if short_ else 'دامپ'} شناسایی‌شده: {sig['pump_pct'] * 100:.1f}% "
               f"({fp(sig['pump_low'])} → {fp(sig['pump_high'])})")
-    L.append(f"• ترندلاین از دو سقف/کف پیوتال رسم و با تایید بسته‌شدن کندل شکسته شد")
-    L.append(f"• نقطه ورود = ری‌تست {'سقف' if short_ else 'کف'} همان حرکت؛ با لمس، Reply فعال‌سازی ارسال می‌شود")
+    L.append("• ترندلاین از دو سقف/کف پیوتال رسم و با تایید بسته‌شدن کندل شکسته شد")
+    if sig["comp"].get("divergence"):
+        L.append("• واگرایی RSI نزولی تایید شد" if short_ else "• واگرایی RSI صعودی تایید شد")
+    if sig["comp"].get("reversal_candle"):
+        L.append("• الگوی کندلی بازگشتی (پین‌بار/انگالف) مشاهده شد")
+    if sig["comp"].get("volume_climax"):
+        L.append("• حجم در نقطه‌ی سقف/کف، نشانه‌ی اتمام حرکت (Climax) دارد")
+    L.append(f"• روند تایم‌فریم بالاتر: {'خنثی/نزولی ✅' if short_ else 'خنثی/صعودی ✅'} (فیلتر ضدترند رد نشد)")
     L.append(f"• حجم کندل شکست: {sig['vol_ratio']:.1f}× میانگین")
     L.append(f"• RSI: {sig['rsi']:.0f}")
-    L.append(f"• امتیاز سیگنال: {sig['score']}/6")
-    L.append("🧠 استراتژی: Trendline Break " + ("Short (Pump Fade)" if short_ else "Long (Dump Fade)") + " + Pending Retest")
+    L.append(f"• امتیاز سیگنال: {sig['score']}/{sig['max_score']}")
+    L.append("🧠 استراتژی: Trendline Break " + ("Short (Pump Fade)" if short_ else "Long (Dump Fade)") +
+              " + Pending Retest + ضدترند")
     if CFG.send_chart:
         L.append("📎 چارت پیوست شده")
     L.append("")
-    L.append("Ai Agent🤖")
-    L.append("")
+    L.append(CFG.brand_name)
     L.append(CFG.handle)
-    L.append("")
-    L.append("⏳ در انتظار لمس نقطه ورود — به‌محض فعال شدن Reply می‌شود")
     return "\n".join(L)
+
+
+STATUS_TEXT = {
+    "pending": "🦭 فعال نشده",
+    "open": "✅💯 فعال شده",
+    "cancelled": "❌ کنسل شده",
+}
+
+
+def status_win_text(pct):
+    return f"✅ بسته شده با سود «{pct:.1f}% سود»"
+
+
+def status_loss_text(pct):
+    return f"🔴 بسته شده «{abs(pct):.1f}% ضرر»"
 
 
 # ----------------------------------------------------------------------------
@@ -621,9 +727,21 @@ def tg_send_photo(png, chat_id, reply_to=None, caption=""):
     _tg("sendPhoto", data=data, files={"photo": ("chart.png", png, "image/png")})
 
 
+def tg_pin(chat_id, message_id):
+    try:
+        _tg("pinChatMessage", json={"chat_id": chat_id, "message_id": message_id, "disable_notification": True})
+    except Exception as e:  # noqa
+        log.warning("pin failed %s/%s: %s (ربات باید ادمین با دسترسی Pin باشد)", chat_id, message_id, e)
+
+
+def tg_unpin(chat_id, message_id):
+    try:
+        _tg("unpinChatMessage", json={"chat_id": chat_id, "message_id": message_id})
+    except Exception:  # noqa
+        pass
+
+
 def broadcast(text, png=None, caption=""):
-    """پیام سیگنال را برای همه چت‌ها می‌فرستد؛ چارت را ریپلای روی همان پیام می‌گذارد.
-    خروجی: لیستی از {chat_id, message_id} برای استفاده در ردیابی بعدی."""
     sent = []
     for cid in CFG.chat_ids:
         try:
@@ -638,6 +756,28 @@ def broadcast(text, png=None, caption=""):
             except Exception as e:  # noqa
                 log.error("photo to %s failed: %s", cid, e)
     return sent
+
+
+def post_status(pos, text, dry):
+    """زیر پیام سیگنال، وضعیت جدید را Reply می‌کند و (در صورت فعال بودن) Pin می‌کند؛
+    وضعیت قبلی همان سیگنال از حالت Pin خارج می‌شود."""
+    if dry:
+        print("[DRY STATUS]", text)
+        return
+    status_msgs = pos.setdefault("status_msgs", {})
+    for ch in pos["chats"]:
+        cid = ch["chat_id"]
+        try:
+            mid = tg_send(text, cid, reply_to=ch["message_id"])
+        except Exception as e:  # noqa
+            log.error("status send failed %s: %s", cid, e)
+            continue
+        if CFG.pin_status:
+            prev = status_msgs.get(cid)
+            if prev:
+                tg_unpin(cid, prev)
+            tg_pin(cid, mid)
+        status_msgs[cid] = mid
 
 
 # ----------------------------------------------------------------------------
@@ -666,7 +806,7 @@ LIVE_BARS = 400
 
 
 def analyze_symbol(sym, tf):
-    """برمی‌گرداند (sig, info, message, candle_time_ms, ctx) یا None"""
+    h1_tf, _h2_tf = MTF_MAP[tf]
     L = fetch_klines(sym, tf, LIVE_BARS)
     if len(L) < CFG.pump_lookback + 30:
         return None
@@ -678,11 +818,12 @@ def analyze_symbol(sym, tf):
     if now_ms - tc > CFG.max_age_min * 60_000:
         return None
 
-    # سطوح تایم‌فریم بالاتر برای فیلتر امتیازی (اختیاری)
     extra = []
+    htf_trend = 0
     try:
-        h1, _ = MTF_MAP[tf]
-        hd = fetch_klines(sym, h1, 300)
+        hd = fetch_klines(sym, h1_tf, 300)
+        H1 = htf_pack(hd, h1_tf)
+        htf_trend = trend_at(H1, tc)
         extra += pivot_levels(hd.high.values, hd.low.values, P["atr"][t] * 2)
         d1 = fetch_klines(sym, "1d", 3)
         if len(d1) >= 2:
@@ -690,14 +831,12 @@ def analyze_symbol(sym, tf):
     except Exception:  # noqa
         pass
 
-    sig = detect_trendline_break(P, t, side=-1, extra_levels=extra)
+    sig = detect_trendline_break(P, t, side=-1, extra_levels=extra, htf_trend=htf_trend)
     if sig is None and CFG.enable_long:
-        sig = detect_trendline_break(P, t, side=1, extra_levels=extra)
+        sig = detect_trendline_break(P, t, side=1, extra_levels=extra, htf_trend=htf_trend)
     if sig is None or sig["score"] < CFG.min_score:
         return None
 
-    # اعتبارسنجی با قیمت لحظه‌ای: چون Entry اینجا «معلق» است (باید قیمت به آن برگردد)،
-    # فقط سیگنال‌هایی که از قبل باطل شده‌اند (رد شده از SL) یا تارگت را کامل زده‌اند حذف می‌شوند.
     px = last_price(sym)
     if px:
         if sig["side"] == -1 and (px >= sig["sl"] or px <= sig["tps"][-1]):
@@ -729,7 +868,7 @@ def scan_tf(tf, dry=False):
         if tt == last or (tt - last) < CFG.cooldown_candles * TF_MS[tf]:
             continue
 
-        log.info("SIGNAL %s %s side=%s score=%s", sym, tf, sig["side"], sig["score"])
+        log.info("SIGNAL %s %s side=%s score=%s/%s", sym, tf, sig["side"], sig["score"], sig["max_score"])
         png = None
         if CFG.send_chart:
             try:
@@ -737,7 +876,7 @@ def scan_tf(tf, dry=False):
             except Exception as e:  # noqa
                 log.error("chart failed %s: %s", sym, e)
         base = sym[:-4] if sym.endswith("USDT") else sym
-        cap = f"📈 چارت #{base} | {tf} | Trendline Break"
+        cap = f"📈 چارت #{base} | {tf} | Trendline Break + Retest"
 
         if dry:
             print("\n" + "=" * 40 + "\n" + msg + "\n" + "=" * 40)
@@ -750,21 +889,36 @@ def scan_tf(tf, dry=False):
         sent[k] = tt
 
         pos_id = f"{sym}|{tf}|{sig['side']}|{tt}"
-        positions[pos_id] = {
+        pos = {
             "symbol": sym, "tf": tf, "side": sig["side"],
             "entry": sig["entry"], "sl": sig["sl"], "tps": sig["tps"],
+            "cancel_price": sig["cancel_price"],
             "opened_at": int(time.time()), "chats": chats,
             "hit_tps": [False, False, False], "status": "pending",
-            "activated_at": None,
+            "activated_at": None, "status_msgs": {},
         }
+        positions[pos_id] = pos
+        post_status(pos, STATUS_TEXT["pending"], dry)
 
     jsave(STATE_PATH, state)
     jsave(POSITIONS_PATH, positions)
 
 
 # ----------------------------------------------------------------------------
-# ردیابی سیگنال‌های فعال + اطلاع‌رسانی با Reply
+# ردیابی سیگنال‌های فعال (بر اساس کندل، نه فقط قیمت لحظه‌ای) + وضعیت پین‌شونده
 # ----------------------------------------------------------------------------
+def _last_candle(symbol, tf):
+    try:
+        df = fetch_klines(symbol, tf, 3)
+        if df.empty:
+            return None
+        row = df.iloc[-1]
+        return dict(o=float(row.open), h=float(row.high), l=float(row.low), c=float(row.close))
+    except Exception as e:  # noqa
+        log.warning("candle fetch failed %s %s: %s", symbol, tf, e)
+        return None
+
+
 def _reply_all(pos, text, dry):
     if dry:
         print("[DRY REPLY]", text)
@@ -776,6 +930,14 @@ def _reply_all(pos, text, dry):
             log.error("reply failed %s: %s", ch, e)
 
 
+def _close_trade(pos, result, pct, trades_log):
+    trades_log.append({
+        "symbol": pos["symbol"], "tf": pos["tf"], "side": pos["side"],
+        "opened_at": pos["opened_at"], "closed_at": int(time.time()),
+        "result": result, "tps_hit": sum(pos.get("hit_tps", [False] * 3)), "pct": pct,
+    })
+
+
 def monitor_positions(dry=False):
     positions = jload(POSITIONS_PATH, {})
     trades_log = jload(TRADES_LOG_PATH, [])
@@ -785,84 +947,75 @@ def monitor_positions(dry=False):
         status = pos.get("status")
         if status not in ("pending", "open"):
             continue
-        px = last_price(pos["symbol"])
-        if px is None:
+        candle = _last_candle(pos["symbol"], pos["tf"])
+        if candle is None:
             continue
         side = pos["side"]
-        entry, sl, tps = pos["entry"], pos["sl"], pos["tps"]
+        entry, sl, tps, cancel_price = pos["entry"], pos["sl"], pos["tps"], pos["cancel_price"]
 
-        # --- مرحله ۱: سیگنال معلق -> منتظر لمس نقطه ورود ---
+        # --- مرحله ۱: سیگنال معلق ---
         if status == "pending":
             age_days = (time.time() - pos["opened_at"]) / 86400
-            touched = (px >= entry) if side == -1 else (px <= entry)
+            touched = (candle["h"] >= entry) if side == -1 else (candle["l"] <= entry)
+            closed_beyond_cancel = (candle["c"] > cancel_price) if side == -1 else (candle["c"] < cancel_price)
+
             if touched:
-                pos["status"] = "open"
-                pos["activated_at"] = int(time.time())
-                changed = True
-                _reply_all(pos, f"✅ سیگنال فعال شد!\n#{pos['symbol']} | {'SHORT' if side == -1 else 'LONG'}\n"
-                                 f"قیمت به نقطه ورود ({fp(entry)}) رسید — از این لحظه تارگت‌ها و SL دنبال می‌شود.", dry)
-                status = "open"   # اجازه بده در همین چرخه، وضعیت باز هم بلافاصله چک شود
-            elif age_days > CFG.pending_max_days:
-                pos["status"] = "expired"
-                changed = True
-                _reply_all(pos, f"⌛️ سیگنال منقضی شد\n#{pos['symbol']} | {'SHORT' if side == -1 else 'LONG'}\n"
-                                 f"قیمت ظرف {CFG.pending_max_days:.0f} روز به نقطه ورود نرسید.", dry)
-                trades_log.append({
-                    "symbol": pos["symbol"], "tf": pos["tf"], "side": pos["side"],
-                    "opened_at": pos["opened_at"], "closed_at": int(time.time()),
-                    "result": "expired", "tps_hit": 0, "pct": 0.0,
-                })
-                continue
-            else:
-                continue
-
-        events = []
-
-        sl_hit = (px >= sl) if side == -1 else (px <= sl)
-        if sl_hit:
-            loss_pct = -(abs(sl - entry) / entry * 100 * CFG.leverage)
-            events.append(("SL", None, loss_pct))
-        else:
-            for i, tp in enumerate(tps):
-                if pos["hit_tps"][i]:
+                rejected = (candle["c"] <= entry) if side == -1 else (candle["c"] >= entry)
+                if rejected:
+                    pos["status"] = "open"
+                    pos["activated_at"] = int(time.time())
+                    changed = True
+                    post_status(pos, STATUS_TEXT["open"], dry)
+                    status = "open"
+                elif closed_beyond_cancel:
+                    pos["status"] = "cancelled"
+                    changed = True
+                    post_status(pos, STATUS_TEXT["cancelled"], dry)
+                    _close_trade(pos, "cancelled", 0.0, trades_log)
                     continue
-                hit = (px <= tp) if side == -1 else (px >= tp)
-                if hit:
-                    pct = roi(tp, entry)
-                    events.append(("TP", i, pct))
-
-        for kind, tp_idx, pct in events:
-            changed = True
-            if kind == "SL":
-                text = (f"⛔️ استاپ لاس فعال شد\n"
-                        f"#{pos['symbol']} | {'SHORT' if side == -1 else 'LONG'}\n"
-                        f"نتیجه: {pct:.1f}% (ضرر)")
-                pos["status"] = "closed"
-                pos["result"] = "loss"
-                pos["closed_at"] = int(time.time())
-                pos["final_pct"] = pct
+                else:
+                    continue  # لمس شده ولی هنوز تایید رد یا کنسل قطعی نداریم؛ کندل بعد چک می‌شود
+            elif closed_beyond_cancel:
+                pos["status"] = "cancelled"
+                changed = True
+                post_status(pos, STATUS_TEXT["cancelled"], dry)
+                _close_trade(pos, "cancelled", 0.0, trades_log)
+                continue
+            elif age_days > CFG.pending_max_days:
+                pos["status"] = "cancelled"
+                changed = True
+                post_status(pos, STATUS_TEXT["cancelled"] + f"\n(ظرف {CFG.pending_max_days:.0f} روز لمس نشد)", dry)
+                _close_trade(pos, "cancelled", 0.0, trades_log)
+                continue
             else:
-                pos["hit_tps"][tp_idx] = True
-                text = (f"🎯 TP{tp_idx + 1} فعال شد ✅\n"
-                        f"#{pos['symbol']} | {'SHORT' if side == -1 else 'LONG'}\n"
-                        f"سود این پله: {pct:.1f}%")
-                if tp_idx == 2:  # TP3 => بستن کامل پوزیشن
-                    text += "\n\n✅ سیگنال با موفقیت کامل بسته شد (TP3)"
-                    pos["status"] = "closed"
-                    pos["result"] = "win"
-                    pos["closed_at"] = int(time.time())
-                    pos["final_pct"] = pct
+                continue
 
-            _reply_all(pos, text, dry)
+        # --- مرحله ۲: سیگنال فعال -> بررسی TP/SL بر اساس کندل ---
+        sl_hit = (candle["h"] >= sl) if side == -1 else (candle["l"] <= sl)
+        if sl_hit:
+            pct = -(abs(sl - entry) / entry * 100 * CFG.leverage)
+            changed = True
+            pos["status"] = "closed"
+            _reply_all(pos, status_loss_text(pct), dry)
+            post_status(pos, status_loss_text(pct), dry)
+            _close_trade(pos, "loss", pct, trades_log)
+            continue
 
-        if pos.get("status") == "closed":
-            trades_log.append({
-                "symbol": pos["symbol"], "tf": pos["tf"], "side": pos["side"],
-                "opened_at": pos["opened_at"], "closed_at": pos.get("closed_at", int(time.time())),
-                "result": pos.get("result", "?"),
-                "tps_hit": sum(pos["hit_tps"]),
-                "pct": pos.get("final_pct", 0.0),
-            })
+        for i, tp in enumerate(tps):
+            if pos["hit_tps"][i]:
+                continue
+            hit = (candle["l"] <= tp) if side == -1 else (candle["h"] >= tp)
+            if not hit:
+                break
+            pos["hit_tps"][i] = True
+            pct = roi(tp, entry)
+            changed = True
+            _reply_all(pos, f"🎯 TP{i + 1} فعال شد ✅\n#{pos['symbol']} | {'SHORT' if side == -1 else 'LONG'}\n"
+                             f"سود این پله: {pct:.1f}%", dry)
+            if i == 2:
+                pos["status"] = "closed"
+                post_status(pos, status_win_text(pct), dry)
+                _close_trade(pos, "win", pct, trades_log)
 
     if changed:
         jsave(POSITIONS_PATH, positions)
@@ -870,45 +1023,67 @@ def monitor_positions(dry=False):
 
 
 # ----------------------------------------------------------------------------
-# گزارش هفتگی (جمعه)
+# گزارش روزانه و هفتگی (به وقت تهران)
 # ----------------------------------------------------------------------------
+def _report_text(trades, title, period_label):
+    n_all = len(trades)
+    cancelled = [t for t in trades if t["result"] == "cancelled"]
+    scored = [t for t in trades if t["result"] in ("win", "loss")]
+    n = len(scored)
+    L = [title, f"🗓 بازه: {period_label}", ""]
+    if n == 0:
+        L.append("سیگنال فعال‌شده‌ای برای گزارش وجود نداشت.")
+        if cancelled:
+            L.append(f"⌛️ {len(cancelled)} سیگنال کنسل/منقضی شد.")
+        L.append("")
+        L.append(CFG.brand_name)
+        L.append(CFG.handle)
+        return "\n".join(L)
+
+    wins = [t for t in scored if t["result"] == "win"]
+    losses = [t for t in scored if t["result"] == "loss"]
+    win_rate = len(wins) / n * 100
+    total_pct = sum(t["pct"] for t in scored)
+    avg_pct = total_pct / n
+    best = max(scored, key=lambda t: t["pct"])
+    worst = min(scored, key=lambda t: t["pct"])
+
+    L.append(f"تعداد سیگنال‌های فعال‌شده: {n}")
+    L.append(f"وین ریت: {win_rate:.0f}% ({len(wins)} برد / {len(losses)} باخت)")
+    L.append(f"مجموع بازدهی (با اهرم {int(CFG.leverage)}×): {total_pct:.1f}%")
+    L.append(f"میانگین بازدهی هر سیگنال: {avg_pct:.1f}%")
+    L.append(f"بهترین معامله: #{best['symbol']} ({best['pct']:.1f}%)")
+    L.append(f"بدترین معامله: #{worst['symbol']} ({worst['pct']:.1f}%)")
+    if cancelled:
+        L.append(f"⌛️ {len(cancelled)} سیگنال کنسل/منقضی شد (بدون تاثیر در وین‌ریت)")
+    L.append("")
+    L.append(CFG.brand_name)
+    L.append(CFG.handle)
+    return "\n".join(L)
+
+
+def daily_report(dry=False):
+    trades_log = jload(TRADES_LOG_PATH, [])
+    start_local = now_tehran().replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoff = start_local.timestamp()
+    trades = [t for t in trades_log if t.get("closed_at", 0) >= cutoff]
+    text = _report_text(trades, "📅 گزارش عملکرد امروز", "امروز")
+    if dry:
+        print("\n" + "=" * 40 + "\n" + text + "\n" + "=" * 40)
+    else:
+        for cid in CFG.chat_ids:
+            try:
+                tg_send(text, cid)
+            except Exception as e:  # noqa
+                log.error("daily report to %s failed: %s", cid, e)
+    return text
+
+
 def weekly_report(dry=False, days=7):
     trades_log = jload(TRADES_LOG_PATH, [])
     cutoff = time.time() - days * 86400
-    recent_all = [t for t in trades_log if t.get("closed_at", 0) >= cutoff]
-    expired = [t for t in recent_all if t["result"] == "expired"]
-    recent = [t for t in recent_all if t["result"] in ("win", "loss")]
-
-    n = len(recent)
-    if n == 0:
-        text = "📊 گزارش عملکرد هفتگی\n\nاین هفته سیگنال فعال‌شده‌ای برای گزارش وجود نداشت."
-        if expired:
-            text += f"\n({len(expired)} سیگنال معلق منقضی شد و لمس نشد)"
-    else:
-        wins = [t for t in recent if t["result"] == "win" or t["tps_hit"] >= 1]
-        losses = [t for t in recent if t["result"] == "loss" and t["tps_hit"] == 0]
-        win_rate = len(wins) / n * 100
-        total_pct = sum(t["pct"] for t in recent)
-        avg_pct = total_pct / n
-        best = max(recent, key=lambda t: t["pct"])
-        worst = min(recent, key=lambda t: t["pct"])
-
-        L = []
-        L.append("📊 گزارش عملکرد هفتگی ربات سیگنال")
-        L.append(f"🗓 بازه: ۷ روز گذشته")
-        L.append("")
-        L.append(f"تعداد سیگنال‌های فعال‌شده: {n}")
-        L.append(f"وین ریت: {win_rate:.0f}% ({len(wins)} برد / {len(losses)} باخت)")
-        L.append(f"مجموع بازدهی (با اهرم {int(CFG.leverage)}×): {total_pct:.1f}%")
-        L.append(f"میانگین بازدهی هر سیگنال: {avg_pct:.1f}%")
-        L.append(f"بهترین معامله: #{best['symbol']} ({best['pct']:.1f}%)")
-        L.append(f"بدترین معامله: #{worst['symbol']} ({worst['pct']:.1f}%)")
-        if expired:
-            L.append(f"⌛️ {len(expired)} سیگنال معلق ظرف مهلت لمس نشد و منقضی شد (بدون تاثیر در وین‌ریت)")
-        L.append("")
-        L.append(CFG.handle)
-        text = "\n".join(L)
-
+    trades = [t for t in trades_log if t.get("closed_at", 0) >= cutoff]
+    text = _report_text(trades, "📊 گزارش عملکرد هفتگی", "۷ روز گذشته")
     if dry:
         print("\n" + "=" * 40 + "\n" + text + "\n" + "=" * 40)
     else:
@@ -920,12 +1095,22 @@ def weekly_report(dry=False, days=7):
     return text
 
 
-def maybe_send_weekly_report(dry=False):
+def maybe_send_scheduled_reports(dry=False):
+    """با آستانه‌ی >= چک می‌شود (نه تساوی دقیق دقیقه) تا با کرون هر ۵ دقیقه‌ی
+    گیت‌هاب اکشنز هم قابل اعتماد کار کند."""
     state = jload(STATE_PATH, {"sent": {}})
-    now = datetime.now(timezone.utc)
+    now = now_tehran()
     today_key = now.strftime("%Y-%m-%d")
-    if (now.weekday() == CFG.weekly_report_dow and now.hour == CFG.weekly_report_hour
-            and state.get("last_weekly_report") != today_key):
+
+    daily_target = now.replace(hour=CFG.daily_report_hour, minute=CFG.daily_report_minute, second=0, microsecond=0)
+    if now >= daily_target and state.get("last_daily_report") != today_key:
+        log.info("sending daily report")
+        daily_report(dry=dry)
+        state["last_daily_report"] = today_key
+        jsave(STATE_PATH, state)
+
+    weekly_target = now.replace(hour=CFG.weekly_report_hour, minute=CFG.weekly_report_minute, second=0, microsecond=0)
+    if now.weekday() == CFG.weekly_report_dow and now >= weekly_target and state.get("last_weekly_report") != today_key:
         log.info("sending weekly report")
         weekly_report(dry=dry)
         state["last_weekly_report"] = today_key
@@ -939,6 +1124,7 @@ def once(dry=False):
     for tf in SIGNAL_TFS:
         scan_tf(tf, dry)
     monitor_positions(dry)
+    maybe_send_scheduled_reports(dry)
 
 
 def run(dry=False):
@@ -947,7 +1133,7 @@ def run(dry=False):
         try:
             for cid in CFG.chat_ids:
                 tg_send(
-                    "✅ ربات سیگنال (Trendline Break Short + Pending Retest) فعال شد\n"
+                    f"✅ {CFG.brand_name} فعال شد\n"
                     f"📊 {CFG.label} Futures | تایم‌فریم 15m و 1h\n"
                     "🔎 ارزها: " + ", ".join(x[:-4] for x in CFG.symbols), cid)
         except Exception as e:  # noqa
@@ -974,9 +1160,9 @@ def run(dry=False):
             except Exception as e:  # noqa
                 log.error("monitor error: %s", e)
             try:
-                maybe_send_weekly_report(dry)
+                maybe_send_scheduled_reports(dry)
             except Exception as e:  # noqa
-                log.error("weekly report error: %s", e)
+                log.error("report error: %s", e)
 
         time.sleep(5)
 
@@ -992,7 +1178,7 @@ def check_connection():
     except Exception as e:  # noqa
         print(f"❌ اتصال صرافی ناموفق: {e}")
 
-    print("در حال تست اتصال تلگرام...")
+    print("در حال تست اتصال تلگرام (بدون ارسال پیام واقعی)...")
     if not CFG.token:
         print("❌ TELEGRAM_TOKEN تنظیم نشده. دستور `python bot.py setup` را اجرا کنید.")
         return
@@ -1007,6 +1193,7 @@ def check_connection():
 
     if not CFG.chat_ids:
         print("⚠️ هیچ chat id ای تنظیم نشده.")
+    print("ℹ️ برای دریافت پیام واقعی در تلگرام: python bot.py test-telegram")
 
 
 def test_telegram():
@@ -1015,7 +1202,7 @@ def test_telegram():
         return
     for cid in CFG.chat_ids:
         try:
-            tg_send("✅ پیام تست از ربات سیگنال.", cid)
+            tg_send(f"✅ پیام تست از {CFG.brand_name}.", cid)
             print(f"✅ ارسال به {cid} موفق.")
         except Exception as e:  # noqa
             print(f"❌ ارسال به {cid} ناموفق: {e}")
@@ -1044,7 +1231,7 @@ def setup_wizard():
         print("❌ توکن نامعتبر است.")
         return
     print(f"✅ ربات @{me['result']['username']} تایید شد.\n")
-    print("2) حالا در تلگرام به همین ربات پیام /start بفرستید (یا ربات را ادمین کانال/گروه کنید).")
+    print("2) حالا در تلگرام به همین ربات پیام /start بفرستید (یا ربات را ادمین کانال/گروه با دسترسی Pin کنید).")
     print("   منتظر دریافت پیام هستم (تا ۹۰ ثانیه)...")
 
     found, offset, t0 = {}, None, time.time()
@@ -1080,16 +1267,17 @@ def setup_wizard():
     CFG.token, CFG.chat_ids = token, ids
     for cid in ids:
         try:
-            tg_send("✅ اتصال ربات سیگنال برقرار شد.", cid)
+            tg_send(f"✅ اتصال {CFG.brand_name} برقرار شد.", cid)
             print(f"✅ پیام تست به {cid} ارسال شد.")
         except Exception as e:  # noqa
             print(f"❌ ارسال به {cid} ناموفق: {e}")
     print("\nتنظیمات در فایل .env ذخیره شد. برای اجرا: python bot.py run")
+    print("نکته: برای Pin شدن وضعیت‌ها، ربات باید در گروه/کانال ادمین با دسترسی Pin Messages باشد.")
 
 
 def install_service():
     unit = f"""[Unit]
-Description=Signal Bot (Trendline Break Short)
+Description={CFG.brand_name} Signal Bot
 After=network-online.target
 Wants=network-online.target
 
@@ -1133,7 +1321,9 @@ def main():
         setup_wizard()
     elif cmd == "test-telegram":
         test_telegram()
-    elif cmd == "report":
+    elif cmd in ("daily-report", "report"):
+        daily_report(dry)
+    elif cmd == "weekly-report":
         weekly_report(dry)
     elif cmd == "install-service":
         install_service()
