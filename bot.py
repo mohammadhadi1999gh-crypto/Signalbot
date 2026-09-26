@@ -46,6 +46,7 @@
   python bot.py test-telegram   # ارسال پیام تست واقعی به تلگرام
   python bot.py daily-report    # ارسال دستی گزارش روزانه (تست)
   python bot.py weekly-report   # ارسال دستی گزارش هفتگی (تست)
+  python bot.py demo-check      # تست اتصال به OKX Demo Trading (فقط خواندن موجودی)
   python bot.py install-service # سرویس systemd برای اجرای دائمی روی سرور
 
 افزودن --dry یعنی ارسال نکن، فقط چاپ کن.
@@ -97,6 +98,16 @@ class CFG:
     fapi_base = os.getenv("BINANCE_FAPI_BASE", "https://fapi.binance.com")
     futures_only = os.getenv("FUTURES_ONLY", "1") == "1"
     label = "OKX" if exchange == "okx" else "Binance"
+
+    # --- اتصال اختیاری به حساب Demo Trading خودِ OKX (پیش‌فرض خاموش) ---
+    # وقتی روشن باشد، به‌محض «فعال شدن» هر سیگنال، یک معامله‌ی واقعی روی حساب
+    # دمو (پول فرضی، قیمت واقعی) باز می‌شود تا بازدهی را مستقیم در اپ OKX ببینید.
+    okx_demo_trading = os.getenv("OKX_DEMO_TRADING", "0") == "1"
+    okx_api_key = os.getenv("OKX_API_KEY", "")
+    okx_api_secret = os.getenv("OKX_API_SECRET", "")
+    okx_api_passphrase = os.getenv("OKX_API_PASSPHRASE", "")
+    okx_demo_margin_usdt = _f("OKX_DEMO_MARGIN_USDT", 5.0)   # مارجین هر معامله‌ی دمو (دلار فرضی)
+    okx_demo_td_mode = os.getenv("OKX_DEMO_TD_MODE", "cross")  # cross | isolated
 
     brand_name = os.getenv("BRAND_NAME", "🏹 اتاق شکار")
     handle = os.getenv("CHANNEL_HANDLE", "@signallroom")
@@ -384,6 +395,122 @@ def get_daily_levels_cached(symbol):
         val = []
     _DAILY_LEVELS_CACHE[symbol] = val
     return val
+
+
+# ----------------------------------------------------------------------------
+# اتصال اختیاری به OKX Demo Trading — باز کردن معامله‌ی واقعی روی حساب دمو
+# ----------------------------------------------------------------------------
+import base64
+import hmac
+import hashlib
+
+
+def okx_ts():
+    n = datetime.now(timezone.utc)
+    return n.strftime("%Y-%m-%dT%H:%M:%S.") + f"{n.microsecond // 1000:03d}Z"
+
+
+def okx_signed(method, path, body=None):
+    """درخواست امضاشده به OKX (برای حساب واقعی یا دمو، بسته به x-simulated-trading)."""
+    if not (CFG.okx_api_key and CFG.okx_api_secret and CFG.okx_api_passphrase):
+        raise RuntimeError("OKX_API_KEY / OKX_API_SECRET / OKX_API_PASSPHRASE تنظیم نشده")
+    body_str = json.dumps(body) if body else ""
+    ts = okx_ts()
+    prehash = ts + method.upper() + path + body_str
+    sign = base64.b64encode(
+        hmac.new(CFG.okx_api_secret.encode(), prehash.encode(), hashlib.sha256).digest()
+    ).decode()
+    headers = {
+        "OK-ACCESS-KEY": CFG.okx_api_key,
+        "OK-ACCESS-SIGN": sign,
+        "OK-ACCESS-TIMESTAMP": ts,
+        "OK-ACCESS-PASSPHRASE": CFG.okx_api_passphrase,
+        "Content-Type": "application/json",
+    }
+    if CFG.okx_demo_trading:
+        headers["x-simulated-trading"] = "1"   # این هدر یعنی سفارش روی محیط دمو اجرا می‌شود، نه حساب واقعی
+    url = CFG.okx_base.rstrip("/") + path
+    r = SESSION.request(method, url, headers=headers,
+                         data=body_str if body is not None else None, timeout=15)
+    r.raise_for_status()
+    j = r.json()
+    if j.get("code") not in ("0", 0):
+        raise RuntimeError(f"okx {path}: {j}")
+    return j.get("data")
+
+
+def okx_inst_id(symbol):
+    return (symbol[:-4] + "-USDT-SWAP") if symbol.endswith("USDT") else symbol
+
+
+_INST_SPEC_CACHE = {}
+
+
+def get_inst_spec(inst_id):
+    if inst_id in _INST_SPEC_CACHE:
+        return _INST_SPEC_CACHE[inst_id]
+    r = SESSION.get(CFG.okx_base.rstrip("/") + "/api/v5/public/instruments",
+                     params={"instType": "SWAP", "instId": inst_id}, timeout=15)
+    r.raise_for_status()
+    d = r.json()["data"][0]
+    spec = dict(ctVal=float(d["ctVal"]), lotSz=float(d["lotSz"]), minSz=float(d["minSz"]))
+    _INST_SPEC_CACHE[inst_id] = spec
+    return spec
+
+
+def compute_contracts(inst_id, margin_usdt, leverage, price):
+    spec = get_inst_spec(inst_id)
+    notional = margin_usdt * leverage
+    raw = notional / (price * spec["ctVal"])
+    lot = spec["lotSz"]
+    n_lots = math.floor(raw / lot)
+    contracts = max(spec["minSz"], n_lots * lot)
+    return round(contracts, 8)
+
+
+def place_demo_trade(symbol, side, sl, tp):
+    """وقتی سیگنال فعال می‌شود، این تابع یک معامله‌ی واقعی روی حساب Demo Trading
+    خودِ OKX باز می‌کند: ورود با اردر مارکت + یک اردر OCO (خروج با TP یا SL،
+    هرکدام زودتر برسد) با کل حجم. برای سادگی و ایمنی، فقط از TP وسط (شماره ۲)
+    به‌عنوان هدف OCO استفاده می‌شود؛ اگر می‌خواهید دقیقاً مثل تلگرام سه‌پله‌ای
+    باشد، بعداً می‌توان آن را هم اضافه کرد."""
+    if not CFG.okx_demo_trading:
+        return None
+    inst = okx_inst_id(symbol)
+    try:
+        okx_signed("POST", "/api/v5/account/set-leverage",
+                   {"instId": inst, "lever": str(int(CFG.leverage)), "mgnMode": CFG.okx_demo_td_mode})
+        px = last_price(symbol)
+        if not px:
+            return None
+        contracts = compute_contracts(inst, CFG.okx_demo_margin_usdt, CFG.leverage, px)
+        if contracts <= 0:
+            return None
+
+        open_side = "sell" if side == -1 else "buy"
+        order = okx_signed("POST", "/api/v5/trade/order", {
+            "instId": inst, "tdMode": CFG.okx_demo_td_mode, "side": open_side,
+            "ordType": "market", "sz": str(contracts),
+        })
+
+        close_side = "buy" if side == -1 else "sell"
+        okx_signed("POST", "/api/v5/trade/order-algo", {
+            "instId": inst, "tdMode": CFG.okx_demo_td_mode, "side": close_side,
+            "ordType": "oco", "sz": str(contracts), "reduceOnly": "true",
+            "tpTriggerPx": str(tp), "tpOrdPx": "-1",
+            "slTriggerPx": str(sl), "slOrdPx": "-1",
+        })
+        log.info("demo trade opened %s contracts=%s entry~%s sl=%s tp=%s", inst, contracts, px, sl, tp)
+        return {"inst": inst, "contracts": contracts, "entry_px": px, "order": order}
+    except Exception as e:  # noqa
+        log.error("demo trade failed %s: %s", symbol, e)
+        return None
+
+
+def okx_demo_check():
+    """تست اتصال کلیدهای دمو: فقط موجودی را می‌خواند، هیچ سفارشی ثبت نمی‌کند."""
+    data = okx_signed("GET", "/api/v5/account/balance")
+    return data
 
 
 # ----------------------------------------------------------------------------
@@ -1133,6 +1260,15 @@ def monitor_positions(dry=False):
                     pos["activated_at"] = int(time.time())
                     changed = True
                     post_status(pos, STATUS_TEXT["open"], dry)
+                    if CFG.okx_demo_trading and not dry:
+                        demo = place_demo_trade(pos["symbol"], side, sl, tps[1])
+                        if demo:
+                            pos["demo"] = demo
+                            _reply_all(pos, f"🧪 معامله‌ی دمو باز شد روی OKX\n"
+                                             f"حجم: {demo['contracts']} کانترکت | ورود≈{demo['entry_px']}\n"
+                                             f"برای دیدن جزئیات، اپ OKX (حالت Demo Trading) را چک کن.", dry)
+                        else:
+                            _reply_all(pos, "⚠️ باز کردن معامله‌ی دمو ناموفق بود (جزئیات در لاگ).", dry)
                     status = "open"
                 elif closed_beyond_cancel:
                     pos["status"] = "cancelled"
@@ -1364,6 +1500,19 @@ def check_connection():
         print("⚠️ هیچ chat id ای تنظیم نشده.")
     print("ℹ️ برای دریافت پیام واقعی در تلگرام: python bot.py test-telegram")
 
+    if CFG.okx_demo_trading:
+        print("\nدر حال تست اتصال به OKX Demo Trading (فقط خواندن موجودی، بدون ثبت سفارش)...")
+        try:
+            data = okx_demo_check()
+            print("✅ اتصال به حساب دمو OKX برقرار است.")
+            for acc in data or []:
+                for d in acc.get("details", []):
+                    if float(d.get("eq") or 0) > 0:
+                        print(f"   موجودی {d['ccy']}: {d['eq']}")
+        except Exception as e:  # noqa
+            print(f"❌ اتصال به OKX Demo Trading ناموفق: {e}")
+            print("   کلیدهای OKX_API_KEY/OKX_API_SECRET/OKX_API_PASSPHRASE را چک کن (باید از داخل حالت Demo Trading ساخته شده باشند).")
+
 
 def test_telegram():
     if not CFG.chat_ids:
@@ -1494,6 +1643,12 @@ def main():
         daily_report(dry)
     elif cmd == "weekly-report":
         weekly_report(dry)
+    elif cmd == "demo-check":
+        try:
+            okx_demo_check()
+            print("✅ اتصال به OKX Demo Trading برقرار است.")
+        except Exception as e:  # noqa
+            print(f"❌ ناموفق: {e}")
     elif cmd == "install-service":
         install_service()
     else:
