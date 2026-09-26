@@ -37,7 +37,6 @@ jobs:
           state.json
           positions.json
           trades_log.json
-
           key: botstate-${{ github.run_id }}
           restore-keys: botstate-
 
