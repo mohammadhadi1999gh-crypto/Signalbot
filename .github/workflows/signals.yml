@@ -34,8 +34,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: |
-            state.json
-            stats.json
+          state.json
+          positions.json
+          trades_log.json
+
           key: botstate-${{ github.run_id }}
           restore-keys: botstate-
 
@@ -63,6 +65,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: |
-            state.json
-            stats.json
+          state.json
+          positions.json
+          trades_log.json
           key: botstate-${{ github.run_id }}
