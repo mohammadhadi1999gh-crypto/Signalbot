@@ -34,12 +34,11 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: |
-          state.json
-          positions.json
-          trades_log.json
+            state.json
+            positions.json
+            trades_log.json
           key: botstate-${{ github.run_id }}
           restore-keys: botstate-
-
       - name: run bot
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -64,7 +63,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: |
-          state.json
-          positions.json
-          trades_log.json
+            state.json
+            positions.json
+            trades_log.json
           key: botstate-${{ github.run_id }}
