@@ -104,14 +104,26 @@ class CFG:
     symbols = [s.strip().upper() for s in os.getenv(
         "SYMBOLS",
         "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,DOGEUSDT,ADAUSDT,AVAXUSDT,LINKUSDT,DOTUSDT,"
-        "LTCUSDT,ATOMUSDT,NEARUSDT,APTUSDT,ARBUSDT,OPUSDT,SUIUSDT,INJUSDT,TRXUSDT,TONUSDT"
+        "LTCUSDT,ATOMUSDT,NEARUSDT,APTUSDT,ARBUSDT,OPUSDT,SUIUSDT,INJUSDT,TRXUSDT,TONUSDT,"
+        "MATICUSDT,FILUSDT,ETCUSDT,ICPUSDT,AAVEUSDT,UNIUSDT,RUNEUSDT,SANDUSDT,MANAUSDT,GALAUSDT,"
+        "FTMUSDT,ALGOUSDT,VETUSDT,EOSUSDT,XLMUSDT,XTZUSDT,THETAUSDT,CHZUSDT,ENJUSDT,ZILUSDT,"
+        "1000PEPEUSDT,1000SHIBUSDT,1000FLOKIUSDT,WIFUSDT,ORDIUSDT,SEIUSDT,TIAUSDT,STXUSDT,IMXUSDT,DYDXUSDT,"
+        "LDOUSDT,GMXUSDT,SNXUSDT,CRVUSDT,COMPUSDT,MKRUSDT,YFIUSDT,1INCHUSDT,KAVAUSDT,MINAUSDT,"
+        "ROSEUSDT,ARUSDT,FLOWUSDT,KSMUSDT,WAVESUSDT,QNTUSDT,GRTUSDT,BATUSDT,ZRXUSDT,RSRUSDT,"
+        "CFXUSDT,ONEUSDT,HBARUSDT,EGLDUSDT,ANKRUSDT,IOTAUSDT,NEOUSDT,DASHUSDT,ZECUSDT,XMRUSDT"
     ).split(",") if s.strip()]
+
+    # به‌جای/علاوه‌بر لیست بالا، به‌صورت خودکار پرحجم‌ترین جفت‌های Futures صرافی را
+    # هم اضافه می‌کند — یعنی هر روز خودش با ارزهای داغ‌تر تطبیق پیدا می‌کند.
+    auto_universe = os.getenv("AUTO_UNIVERSE", "1") == "1"
+    universe_size = _f("UNIVERSE_SIZE", 80)
 
     leverage = _f("LEVERAGE", 20)
     max_sl_pct = _f("MAX_SL_PCT", 3.0) / 100
     scan_back = _f("SCAN_BACK", 1)
     max_age_min = _f("MAX_AGE_MIN", 25)
     cooldown_candles = _f("COOLDOWN_CANDLES", 6)
+    workers = _f("WORKERS", 8)   # تعداد رشته‌های موازی برای اسکن هم‌زمان چند ارز (سرعت را چند برابر می‌کند)
 
     # --- پارامترهای پایه‌ی استراتژی «شکست ترندلاین بعد از پامپ» ---
     pump_lookback = _f("PUMP_LOOKBACK", 120)
@@ -129,7 +141,7 @@ class CFG:
     require_htf_filter = os.getenv("REQUIRE_HTF_FILTER", "1") == "1"   # ممنوعیت شورت روی روند صعودی قوی تایم بالاتر
     require_confirmation = os.getenv("REQUIRE_CONFIRMATION", "1") == "1"  # الزام واگرایی یا کندل بازگشتی
     volume_climax_mult = _f("VOLUME_CLIMAX_MULT", 1.2)
-    min_score = _f("MIN_SCORE", 7)      # از 10 (سخت‌گیرانه‌تر از قبل)
+    min_score = _f("MIN_SCORE", 7)      # از 10 (سخت‌گیرانه‌تر از قبل) — این کم نشد، فقط دامنه‌ی جستجو زیاد شد
 
     # --- ردیابی سیگنال‌های فعال ---
     monitor_interval_sec = _f("MONITOR_INTERVAL_SEC", 45)
@@ -145,9 +157,68 @@ class CFG:
     stats_ttl_h = _f("STATS_TTL_HOURS", 12)
 
 
-TF_MS = {"15m": 900_000, "1h": 3_600_000, "4h": 14_400_000, "1d": 86_400_000}
-MTF_MAP = {"15m": ("1h", "4h"), "1h": ("4h", "1d")}
-SIGNAL_TFS = ("15m", "1h")
+TF_MS = {
+    "5m": 300_000, "15m": 900_000, "30m": 1_800_000, "1h": 3_600_000, "2h": 7_200_000,
+    "4h": 14_400_000, "6h": 21_600_000, "12h": 43_200_000, "1d": 86_400_000,
+    "3d": 259_200_000, "1w": 604_800_000, "1M": 2_592_000_000,  # 1M تقریبی (۳۰ روز)
+}
+MTF_MAP = {
+    "5m": ("15m", "1h"),
+    "15m": ("1h", "4h"),
+    "30m": ("2h", "4h"),
+    "1h": ("4h", "1d"),
+    "2h": ("6h", "1d"),
+    "4h": ("1d", "1w"),
+    "6h": ("1d", "1w"),
+    "12h": ("1d", "1w"),
+    "1d": ("1w", "1M"),
+    "3d": ("1w", "1M"),
+    "1w": ("1M", None),
+    "1M": (None, None),
+}
+SIGNAL_TFS = ("5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "3d", "1w", "1M")
+
+# پارامترهایی که منطقاً باید متناسب با طول تایم‌فریم فرق کنند: هرچه تایم‌فریم
+# بزرگ‌تر، هم پامپ‌ها به‌طور طبیعی درصد بزرگ‌تری دارند، هم فاصله‌ی منطقی SL
+# بزرگ‌تر است، هم صبر برای لمس نقطه‌ی ورود باید بیشتر باشد.
+# نکته: این جدول‌ها گسترده شدند تا سیگنال بیشتری رد نشود، ولی همان معیارهای
+# کیفی (امتیاز حداقل CFG.min_score، فیلتر روند بالاتر، واگرایی/کندل بازگشتی)
+# برای همه‌ی تایم‌فریم‌ها بدون استثنا اجرا می‌شود — یعنی دقت سیگنال کم نشده،
+# فقط دامنه‌ی جستجو (تعداد ارز × تعداد تایم‌فریم) زیاد شده است.
+PUMP_LOOKBACK_BY_TF = {
+    "5m": 130, "15m": 120, "30m": 110, "1h": 120, "2h": 110, "4h": 100,
+    "6h": 100, "12h": 95, "1d": 90, "3d": 70, "1w": 52, "1M": 24,
+}
+MAX_SL_PCT_BY_TF = {          # درصد
+    "5m": 2.0, "15m": 3.0, "30m": 3.5, "1h": 4.0, "2h": 4.5, "4h": 5.0,
+    "6h": 6.0, "12h": 7.0, "1d": 8.0, "3d": 10.0, "1w": 12.0, "1M": 18.0,
+}
+PENDING_MAX_DAYS_BY_TF = {
+    "5m": 1, "15m": 3, "30m": 4, "1h": 5, "2h": 7, "4h": 10,
+    "6h": 13, "12h": 16, "1d": 20, "3d": 35, "1w": 60, "1M": 180,
+}
+
+_ENV_PUMP_LOOKBACK = os.getenv("PUMP_LOOKBACK")
+_ENV_MAX_SL_PCT = os.getenv("MAX_SL_PCT")
+_ENV_PENDING_MAX_DAYS = os.getenv("PENDING_MAX_DAYS")
+
+
+def pump_lookback_for(tf):
+    if _ENV_PUMP_LOOKBACK is not None:
+        return int(_ENV_PUMP_LOOKBACK)
+    return PUMP_LOOKBACK_BY_TF.get(tf, 120)
+
+
+def max_sl_pct_for(tf):
+    if _ENV_MAX_SL_PCT is not None:
+        return float(_ENV_MAX_SL_PCT) / 100
+    return MAX_SL_PCT_BY_TF.get(tf, 3.0) / 100
+
+
+def pending_max_days_for(tf):
+    if _ENV_PENDING_MAX_DAYS is not None:
+        return float(_ENV_PENDING_MAX_DAYS)
+    return PENDING_MAX_DAYS_BY_TF.get(tf, 3)
 
 log = logging.getLogger("bot")
 SESSION = requests.Session()
@@ -166,7 +237,8 @@ if not CFG.futures_only:
     ENDPOINTS += ["https://api.binance.com/api/v3/klines",
                   "https://data-api.binance.vision/api/v3/klines"]
 
-OKX_BAR = {"15m": "15m", "1h": "1H", "4h": "4H", "1d": "1Dutc"}
+OKX_BAR = {"5m": "5m", "15m": "15m", "30m": "30m", "1h": "1H", "2h": "2H", "4h": "4H",
+           "6h": "6H", "12h": "12H", "1d": "1Dutc", "3d": "3Dutc", "1w": "1Wutc", "1M": "1Mutc"}
 
 
 def _okx_klines(symbol, tf, limit, end=None):
@@ -233,6 +305,85 @@ def fetch_klines(symbol, tf, limit=500, end=None):
         except Exception as e:  # noqa
             err = e
     raise RuntimeError(f"fetch failed {symbol} {tf}: {err}")
+
+
+# ----------------------------------------------------------------------------
+# جهان قابل‌اسکن (لیست دستی + Auto Universe) و کش‌های سبک درون‌اجرا
+# ----------------------------------------------------------------------------
+def fetch_okx_top_universe(size):
+    """پرحجم‌ترین جفت‌های Futures-USDT روی OKX را بر اساس حجم ۲۴ ساعته برمی‌گرداند."""
+    r = SESSION.get(CFG.okx_base.rstrip("/") + "/api/v5/market/tickers", params={"instType": "SWAP"}, timeout=15)
+    r.raise_for_status()
+    j = r.json()
+    if j.get("code") != "0":
+        raise RuntimeError(f"okx tickers: {j.get('msg')}")
+    rows = []
+    for d in j.get("data", []):
+        inst = d.get("instId", "")
+        if not inst.endswith("-USDT-SWAP"):
+            continue
+        try:
+            vol = float(d.get("volCcy24h") or 0)
+        except Exception:  # noqa
+            vol = 0.0
+        rows.append((inst.replace("-USDT-SWAP", "") + "USDT", vol))
+    rows.sort(key=lambda x: -x[1])
+    return [s for s, _ in rows[:size]]
+
+
+_SCAN_SYMBOLS_CACHE = None
+
+
+def get_scan_symbols():
+    """لیست نهایی ارزها برای اسکن: ارزهای دستی/ثابت + (در صورت فعال بودن) پرحجم‌ترین‌های زنده‌ی صرافی.
+    فقط یک‌بار در هر اجرا محاسبه می‌شود (کش در حافظه)."""
+    global _SCAN_SYMBOLS_CACHE
+    if _SCAN_SYMBOLS_CACHE is not None:
+        return _SCAN_SYMBOLS_CACHE
+    syms = list(dict.fromkeys(CFG.symbols))   # حفظ ترتیب + حذف تکراری
+    if CFG.auto_universe and CFG.exchange == "okx":
+        try:
+            top = fetch_okx_top_universe(CFG.universe_size)
+            for s in top:
+                if s not in syms:
+                    syms.append(s)
+            log.info("auto universe: %d ارز اضافه شد (مجموع %d)", len(top), len(syms))
+        except Exception as e:  # noqa
+            log.warning("auto universe fetch failed, فقط لیست دستی استفاده می‌شود: %s", e)
+    _SCAN_SYMBOLS_CACHE = syms
+    return syms
+
+
+# --- کش سبک برای جلوگیری از فراخوانی تکراری API در یک اجرا (وقتی چند تایم‌فریم
+#     سیگنال از یک تایم‌فریم بالاتر مشترک استفاده می‌کنند) ---
+_HTF_CACHE = {}
+_DAILY_LEVELS_CACHE = {}
+
+
+def get_htf_cached(symbol, htf_tf):
+    key = (symbol, htf_tf)
+    if key in _HTF_CACHE:
+        return _HTF_CACHE[key]
+    try:
+        hd = fetch_klines(symbol, htf_tf, 300)
+        val = (htf_pack(hd, htf_tf), hd)
+    except Exception as e:  # noqa
+        log.warning("htf fetch failed %s %s: %s", symbol, htf_tf, e)
+        val = (None, None)
+    _HTF_CACHE[key] = val
+    return val
+
+
+def get_daily_levels_cached(symbol):
+    if symbol in _DAILY_LEVELS_CACHE:
+        return _DAILY_LEVELS_CACHE[symbol]
+    try:
+        d1 = fetch_klines(symbol, "1d", 3)
+        val = [float(d1.high.iloc[-1]), float(d1.low.iloc[-1])] if len(d1) >= 2 else []
+    except Exception:  # noqa
+        val = []
+    _DAILY_LEVELS_CACHE[symbol] = val
+    return val
 
 
 # ----------------------------------------------------------------------------
@@ -344,18 +495,21 @@ def is_bullish_reversal(o, h, l, c, i):
 # ----------------------------------------------------------------------------
 # استراتژی: شکست ترندلاین بعد از پامپ + نقطه ورود معلق (ری‌تست) + فیلترهای ضدترند
 # ----------------------------------------------------------------------------
-def detect_trendline_break(P, t, side, extra_levels=(), htf_trend=0):
+def detect_trendline_break(P, t, side, extra_levels=(), htf_trend=0, lookback=None, max_sl_pct=None):
     """
     side = -1 : شکست ترندلاین بالای یک پامپ => سیگنال Short (استراتژی اصلی)
     side = +1 : حالت قرینه، شکست ترندلاین زیر یک دامپ => سیگنال Long (اختیاری)
     htf_trend : روند تایم‌فریم بالاتر در لحظه‌ی سیگنال (+1 صعودی قوی، -1 نزولی قوی، 0 خنثی)
+    lookback / max_sl_pct : مقادیر اختصاصیِ تایم‌فریم سیگنال (اگر داده نشود، مقدار سراسری CFG استفاده می‌شود)
     """
+    lookback = CFG.pump_lookback if lookback is None else int(lookback)
+    max_sl_pct = CFG.max_sl_pct if max_sl_pct is None else float(max_sl_pct)
     o, h, l, c, v, vs, atr, rsi = P["o"], P["h"], P["l"], P["c"], P["v"], P["vsma"], P["atr"], P["rsi"]
     a = atr[t]
-    if not a > 0 or t < CFG.pump_lookback + 5:
+    if not a > 0 or t < lookback + 5:
         return None
 
-    w0 = max(0, t - CFG.pump_lookback)
+    w0 = max(0, t - lookback)
 
     if side == -1:
         # فیلتر روند تایم بالاتر: اگر خودِ تایم‌فریم بالاتر صعودی قوی است، این پامپ
@@ -409,7 +563,7 @@ def detect_trendline_break(P, t, side, extra_levels=(), htf_trend=0):
         sl = float(ceiling + CFG.sl_buffer_atr * a)
         cancel_price = float(ceiling + CFG.cancel_buffer_atr * a)
         R = sl - entry
-        if R <= 0 or R / entry > CFG.max_sl_pct or R / entry < 0.001:
+        if R <= 0 or R / entry > max_sl_pct or R / entry < 0.001:
             return None
         if entry <= c[t]:
             return None
@@ -504,7 +658,7 @@ def detect_trendline_break(P, t, side, extra_levels=(), htf_trend=0):
         sl = float(floor_ - CFG.sl_buffer_atr * a)
         cancel_price = float(floor_ - CFG.cancel_buffer_atr * a)
         R = entry - sl
-        if R <= 0 or R / entry > CFG.max_sl_pct or R / entry < 0.001:
+        if R <= 0 or R / entry > max_sl_pct or R / entry < 0.001:
             return None
         if entry >= c[t]:
             return None
@@ -807,8 +961,11 @@ LIVE_BARS = 400
 
 def analyze_symbol(sym, tf):
     h1_tf, _h2_tf = MTF_MAP[tf]
+    lb = pump_lookback_for(tf)
+    sl_pct = max_sl_pct_for(tf)
+
     L = fetch_klines(sym, tf, LIVE_BARS)
-    if len(L) < CFG.pump_lookback + 30:
+    if len(L) < lb + 30:
         return None
     P = prep(L)
 
@@ -820,20 +977,20 @@ def analyze_symbol(sym, tf):
 
     extra = []
     htf_trend = 0
-    try:
-        hd = fetch_klines(sym, h1_tf, 300)
-        H1 = htf_pack(hd, h1_tf)
-        htf_trend = trend_at(H1, tc)
-        extra += pivot_levels(hd.high.values, hd.low.values, P["atr"][t] * 2)
-        d1 = fetch_klines(sym, "1d", 3)
-        if len(d1) >= 2:
-            extra += [float(d1.high.iloc[-1]), float(d1.low.iloc[-1])]
-    except Exception:  # noqa
-        pass
+    if h1_tf:
+        H1, hd = get_htf_cached(sym, h1_tf)
+        if H1 is not None:
+            htf_trend = trend_at(H1, tc)
+        if hd is not None:
+            try:
+                extra += pivot_levels(hd.high.values, hd.low.values, P["atr"][t] * 2)
+            except Exception:  # noqa
+                pass
+    extra += get_daily_levels_cached(sym)
 
-    sig = detect_trendline_break(P, t, side=-1, extra_levels=extra, htf_trend=htf_trend)
+    sig = detect_trendline_break(P, t, side=-1, extra_levels=extra, htf_trend=htf_trend, lookback=lb, max_sl_pct=sl_pct)
     if sig is None and CFG.enable_long:
-        sig = detect_trendline_break(P, t, side=1, extra_levels=extra, htf_trend=htf_trend)
+        sig = detect_trendline_break(P, t, side=1, extra_levels=extra, htf_trend=htf_trend, lookback=lb, max_sl_pct=sl_pct)
     if sig is None or sig["score"] < CFG.min_score:
         return None
 
@@ -849,17 +1006,26 @@ def analyze_symbol(sym, tf):
 
 
 def scan_tf(tf, dry=False):
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     state = jload(STATE_PATH, {"sent": {}})
     sent = state["sent"]
     positions = jload(POSITIONS_PATH, {})
+    symbols = get_scan_symbols()
 
-    for sym in CFG.symbols:
-        try:
-            res = analyze_symbol(sym, tf)
-        except Exception as e:  # noqa
-            log.warning("%s %s: %s", sym, tf, e)
-            continue
-        time.sleep(0.15)
+    results = {}
+    with ThreadPoolExecutor(max_workers=max(1, int(CFG.workers))) as ex:
+        futures = {ex.submit(analyze_symbol, sym, tf): sym for sym in symbols}
+        for fut in as_completed(futures):
+            sym = futures[fut]
+            try:
+                results[sym] = fut.result()
+            except Exception as e:  # noqa
+                log.warning("%s %s: %s", sym, tf, e)
+
+    # ارسال پیام‌ها و نوشتن فایل‌ها به‌صورت ترتیبی (تک‌رشته) تا رقابت روی state/positions پیش نیاید
+    for sym in symbols:
+        res = results.get(sym)
         if not res:
             continue
         sig, info, msg, tt, ctx = res
@@ -896,6 +1062,7 @@ def scan_tf(tf, dry=False):
             "opened_at": int(time.time()), "chats": chats,
             "hit_tps": [False, False, False], "status": "pending",
             "activated_at": None, "status_msgs": {},
+            "pending_max_days": pending_max_days_for(tf),
         }
         positions[pos_id] = pos
         post_status(pos, STATUS_TEXT["pending"], dry)
@@ -981,10 +1148,10 @@ def monitor_positions(dry=False):
                 post_status(pos, STATUS_TEXT["cancelled"], dry)
                 _close_trade(pos, "cancelled", 0.0, trades_log)
                 continue
-            elif age_days > CFG.pending_max_days:
+            elif age_days > pos.get("pending_max_days", CFG.pending_max_days):
                 pos["status"] = "cancelled"
                 changed = True
-                post_status(pos, STATUS_TEXT["cancelled"] + f"\n(ظرف {CFG.pending_max_days:.0f} روز لمس نشد)", dry)
+                post_status(pos, STATUS_TEXT["cancelled"] + f"\n(ظرف {pos.get('pending_max_days', CFG.pending_max_days):.0f} روز لمس نشد)", dry)
                 _close_trade(pos, "cancelled", 0.0, trades_log)
                 continue
             else:
@@ -1128,14 +1295,16 @@ def once(dry=False):
 
 
 def run(dry=False):
-    log.info("bot started | symbols=%d | dry=%s", len(CFG.symbols), dry)
+    symbols = get_scan_symbols()
+    log.info("bot started | symbols=%d | tfs=%s | dry=%s", len(symbols), ",".join(SIGNAL_TFS), dry)
     if not dry and CFG.chat_ids:
         try:
             for cid in CFG.chat_ids:
                 tg_send(
                     f"✅ {CFG.brand_name} فعال شد\n"
-                    f"📊 {CFG.label} Futures | تایم‌فریم 15m و 1h\n"
-                    "🔎 ارزها: " + ", ".join(x[:-4] for x in CFG.symbols), cid)
+                    f"📊 {CFG.label} Futures | تایم‌فریم‌ها: {', '.join(SIGNAL_TFS)}\n"
+                    f"🔎 تعداد ارز تحت اسکن: {len(symbols)}"
+                    + (" (شامل Auto Universe)" if CFG.auto_universe else ""), cid)
         except Exception as e:  # noqa
             log.error("startup message failed: %s", e)
 
