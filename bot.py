@@ -109,6 +109,24 @@ class CFG:
     okx_demo_margin_usdt = _f("OKX_DEMO_MARGIN_USDT", 5.0)   # مارجین هر معامله‌ی دمو (دلار فرضی)
     okx_demo_td_mode = os.getenv("OKX_DEMO_TD_MODE", "cross")  # cross | isolated
 
+    # --- استراتژی مخصوص طلا (Trendline + شکست ساختار + فیبوی ۰.۷۸۶-۱) ---
+    gold_enabled = os.getenv("GOLD_STRATEGY", "1") == "1"
+    gold_symbol = "XAUUSDT"
+    # طلای واقعی OKX یک محصول جدا و پیچیده به اسم X-Perp است (قرارداد ۵ساله با
+    # انقضا، مخصوص کاربران اروپا، instId متغیر) که با endpoint معمولی کندل کار
+    # نمی‌کند. برای پایداری و در دسترس بودن همیشگی، از توکن Paxos Gold (PAXG)
+    # -یک SPOT استاندارد و همیشه در دسترس روی OKX که تقریباً برابر با یک اونس
+    # طلای واقعی است- به‌عنوان منبع قیمت استفاده می‌شود.
+    gold_inst_id = os.getenv("GOLD_INST_ID", "PAXG-USDT")
+    gold_tf = os.getenv("GOLD_TF", "5m")
+    gold_htf = os.getenv("GOLD_HTF", "1h")
+    gold_lookback = _f("GOLD_LOOKBACK", 150)
+    gold_min_trend_pct = _f("GOLD_MIN_TREND_PCT", 0.4) / 100
+    gold_fib_entry = _f("GOLD_FIB_ENTRY", 0.786)
+    gold_max_sl_pct = _f("GOLD_MAX_SL_PCT", 1.5) / 100
+    gold_pending_max_days = _f("GOLD_PENDING_MAX_DAYS", 2.0)
+    gold_min_entry_gap_atr = _f("GOLD_MIN_ENTRY_GAP_ATR", 1.0)
+
     brand_name = os.getenv("BRAND_NAME", "🏹 اتاق شکار")
     handle = os.getenv("CHANNEL_HANDLE", "@signallroom")
 
@@ -146,6 +164,13 @@ class CFG:
     sl_buffer_atr = _f("SL_BUFFER_ATR", 0.5)
     retest_buffer_atr = _f("RETEST_BUFFER_ATR", 0.3)
     cancel_buffer_atr = _f("CANCEL_BUFFER_ATR", 1.0)   # عبور قاطع از این فاصله بالای سقف = کنسل
+    # حداقل فاصله‌ی لازم بین قیمت لحظه‌ی سیگنال و نقطه‌ی ورود (ضریب ATR).
+    # بدون این، گاهی نقطه‌ی ورود چسبیده به قیمت لحظه‌ای بود و در همون کندل بعدی
+    # لمس/رد می‌شد؛ یعنی وقتی پیام به کاربر می‌رسید، فرصتی برای ورود دستی نمی‌موند.
+    min_entry_gap_atr = _f("MIN_ENTRY_GAP_ATR", 0.8)
+    # حداقل زمانی که یک سیگنال معلق باید «صبر کند» قبل از این‌که اصلاً برای
+    # فعال‌شدن چک شود — این هم دقیقاً برای همون مشکل «بدون فرصت ورود» است.
+    min_activation_delay_sec = _f("MIN_ACTIVATION_DELAY_SEC", 240)
     enable_long = os.getenv("ENABLE_LONG", "0") == "1"
 
     # --- فیلترهای ضدترند (جدید) ---
@@ -252,8 +277,8 @@ OKX_BAR = {"5m": "5m", "15m": "15m", "30m": "30m", "1h": "1H", "2h": "2H", "4h":
            "6h": "6H", "12h": "12H", "1d": "1Dutc", "3d": "3Dutc", "1w": "1Wutc", "1M": "1Mutc"}
 
 
-def _okx_klines(symbol, tf, limit, end=None):
-    inst = symbol[:-4] + "-USDT-SWAP" if symbol.endswith("USDT") else symbol
+def _okx_klines(symbol, tf, limit, end=None, inst_override=None):
+    inst = inst_override or (symbol[:-4] + "-USDT-SWAP" if symbol.endswith("USDT") else symbol)
     rows, after = [], (int(end) + 1 if end else None)
     while len(rows) < limit:
         params = {"instId": inst, "bar": OKX_BAR[tf], "limit": min(300, limit - len(rows))}
@@ -282,10 +307,10 @@ def _okx_klines(symbol, tf, limit, end=None):
     return df.sort_values("time").reset_index(drop=True)
 
 
-def last_price(symbol):
+def last_price(symbol, inst_override=None):
     try:
         if CFG.exchange == "okx":
-            inst = symbol[:-4] + "-USDT-SWAP"
+            inst = inst_override or (symbol[:-4] + "-USDT-SWAP")
             r = SESSION.get(CFG.okx_base.rstrip("/") + "/api/v5/market/ticker", params={"instId": inst}, timeout=10)
             return float(r.json()["data"][0]["last"])
         r = SESSION.get(CFG.fapi_base.rstrip("/") + "/fapi/v1/ticker/price", params={"symbol": symbol}, timeout=10)
@@ -294,9 +319,9 @@ def last_price(symbol):
         return None
 
 
-def fetch_klines(symbol, tf, limit=500, end=None):
+def fetch_klines(symbol, tf, limit=500, end=None, inst_override=None):
     if CFG.exchange == "okx":
-        return _okx_klines(symbol, tf, limit, end)
+        return _okx_klines(symbol, tf, limit, end, inst_override=inst_override)
     params = {"symbol": symbol, "interval": tf, "limit": min(limit, 1000)}
     if end:
         params["endTime"] = int(end)
@@ -362,7 +387,9 @@ def get_scan_symbols():
         except Exception as e:  # noqa
             log.warning("auto universe fetch failed, فقط لیست دستی استفاده می‌شود: %s", e)
     _SCAN_SYMBOLS_CACHE = syms
-    return syms
+    if CFG.gold_enabled and CFG.gold_symbol not in _SCAN_SYMBOLS_CACHE:
+        _SCAN_SYMBOLS_CACHE = [CFG.gold_symbol] + _SCAN_SYMBOLS_CACHE   # طلا اول اسکن شود
+    return _SCAN_SYMBOLS_CACHE
 
 
 # --- کش سبک برای جلوگیری از فراخوانی تکراری API در یک اجرا (وقتی چند تایم‌فریم
@@ -692,8 +719,8 @@ def detect_trendline_break(P, t, side, extra_levels=(), htf_trend=0, lookback=No
         R = sl - entry
         if R <= 0 or R / entry > max_sl_pct or R / entry < 0.001:
             return None
-        if entry <= c[t]:
-            return None
+        if entry <= c[t] + CFG.min_entry_gap_atr * a:
+            return None   # فاصله‌ی ورود تا قیمت فعلی خیلی کمه؛ زمانی برای واکنش نمی‌مونه
 
         rng = pump_high - pump_low
         raw_tps = [pump_high - 0.382 * rng, pump_high - 0.618 * rng, pump_low,
@@ -787,7 +814,7 @@ def detect_trendline_break(P, t, side, extra_levels=(), htf_trend=0, lookback=No
         R = entry - sl
         if R <= 0 or R / entry > max_sl_pct or R / entry < 0.001:
             return None
-        if entry >= c[t]:
+        if entry >= c[t] - CFG.min_entry_gap_atr * a:
             return None
 
         rng = dump_high - dump_low
@@ -829,6 +856,151 @@ def detect_trendline_break(P, t, side, extra_levels=(), htf_trend=0, lookback=No
             line_pts=[(int(l1), float(l[l1])), (int(l2), float(l[l2]))], slope=float(slope),
             rsi=float(rsi[t]), vol_ratio=float(vol_ratio), comp=comp, score=score,
             L=int(L), max_score=len(comp) + 1,
+        )
+
+
+# ----------------------------------------------------------------------------
+# استراتژی مخصوص طلا (XAUUSD, تایم‌فریم 5m): بازگشتِ روند تایید‌شده با
+# شکست ترندلاین + شکست آخرین سقف/کف ساختار + ورود در محدوده فیبوی ۰.۷۸۶ تا ۱
+# ----------------------------------------------------------------------------
+def detect_gold_reversal(P, t, htf_trend, lookback):
+    """
+    قدم‌های استراتژی (دقیقاً طبق توضیح کاربر):
+      ۱) روند تایم‌فریم بالاتر مشخص می‌شود (htf_trend، از قبل محاسبه شده).
+      ۲) اگر HTF نزولی است: خط روند نزولی (روی سقف‌ها) رسم و شکستش رو به بالا
+         تایید می‌شود، سپس باید آخرین سقف هم به سمت بالا شکسته شود (بازگشت به Long).
+         اگر HTF صعودی است: خط روند صعودی (روی کف‌ها) و شکستش رو به پایین +
+         شکست آخرین کف (بازگشت به Short) — کاملاً قرینه.
+      ۳) فیبوی دو نقطه از ابتدای روند تا انتهای روند رسم می‌شود.
+      ۴) فقط سطوح 0 / 0.786 / 1 نگه داشته می‌شوند: محدوده‌ی بین ۱ و ۰.۷۸۶ به‌عنوان
+         نقطه‌ی ورودِ معلق (ری‌تست) و حد ضرر استفاده می‌شود.
+    خروجی دقیقاً هم‌شکل خروجی detect_trendline_break است تا از همان خط لوله‌ی
+    ردیابی/پیام/گزارش استفاده شود.
+    """
+    o, h, l, c, v, vs, atr, rsi = P["o"], P["h"], P["l"], P["c"], P["v"], P["vsma"], P["atr"], P["rsi"]
+    a = atr[t]
+    if htf_trend == 0 or not a > 0 or t < lookback + 5:
+        return None
+    w0 = max(0, t - lookback)
+    fib_r = CFG.gold_fib_entry   # پیش‌فرض 0.786
+
+    if htf_trend == -1:
+        # HTF نزولی -> دنبال بازگشت صعودی (Long)، خط روند نزولی از سقف‌ها
+        ts_idx = w0 + int(np.argmax(h[w0:t + 1]))            # شروع روند نزولی: بالاترین سقف
+        if t - ts_idx < CFG.pump_min_bars:
+            return None
+        te_idx = ts_idx + int(np.argmin(l[ts_idx:t + 1]))    # انتهای روند (تاکنون): پایین‌ترین کف
+        trend_start_px, trend_end_px = float(h[ts_idx]), float(l[te_idx])
+        if trend_start_px <= 0 or (trend_start_px - trend_end_px) / trend_start_px < CFG.gold_min_trend_pct:
+            return None
+
+        piv = [i + ts_idx for i in pivot_idx(h[ts_idx:t + 1], CFG.pivot_left, CFG.pivot_right, "high")]
+        piv = [i for i in piv if i < t]
+        if len(piv) < 2:
+            return None
+        p1, p2 = piv[0], piv[-1]
+        if h[p2] > h[p1]:                    # سقف‌ها باید نزولی (پایین‌تر) باشند
+            return None
+        fit = _fit_trendline([p1, p2], [h[p1], h[p2]])
+        if fit is None:
+            return None
+        slope, intercept = fit
+        if slope > 1e-9:
+            return None
+        line = lambda x: slope * x + intercept
+
+        win_start = max(p2, t - 8)
+        if not any(c[k] <= line(k) + CFG.break_buffer_atr * a for k in range(win_start, t)):
+            return None
+        if not (c[t] > line(t) + CFG.break_buffer_atr * a):
+            return None
+
+        last_high = float(h[piv[-1]])
+        if not (c[t] > last_high):           # تاییدیه‌ی دوم: شکست آخرین سقف
+            return None
+
+        fib = lambda r: trend_start_px + (trend_end_px - trend_start_px) * r
+        entry = float(fib(fib_r))
+        sl = float(fib(1.0) - CFG.retest_buffer_atr * a)
+        cancel_price = float(sl - CFG.cancel_buffer_atr * a)
+        R = entry - sl
+        if R <= 0 or R / entry > CFG.gold_max_sl_pct or entry <= c[t] + CFG.gold_min_entry_gap_atr * a:
+            return None
+        tps = [float(fib(0.5)), float(fib(0.236)), float(fib(0.0))]
+        if any(tp <= entry for tp in tps) or c[t] >= tps[-1]:
+            return None
+
+        reversal_candle = is_bullish_reversal(o, h, l, c, t) or is_bullish_reversal(o, h, l, c, piv[-1])
+        vol_ratio = v[t] / vs[t] if vs[t] > 0 else 0
+        comp = dict(trendline=2, structure_break=2, fib_zone=2,
+                    reversal_candle=1 if reversal_candle else 0,
+                    volume=1 if vol_ratio >= 1.2 else 0)
+        score = sum(comp.values())
+        return dict(
+            side=1, entry=entry, sl=sl, tps=tps, R=float(R), atr=float(a), cancel_price=cancel_price,
+            pump_low=trend_end_px, pump_high=trend_start_px, pump_pct=(trend_start_px - trend_end_px) / trend_start_px,
+            line_pts=[(int(p1), float(h[p1])), (int(p2), float(h[p2]))], slope=float(slope),
+            rsi=float(rsi[t]), vol_ratio=float(vol_ratio), comp=comp, score=score,
+            L=int(ts_idx), max_score=8, is_gold=True, fib_levels={"0": trend_start_px, "0.786": entry, "1": float(fib(1.0))},
+        )
+
+    else:  # htf_trend == 1: HTF صعودی -> دنبال بازگشت نزولی (Short)، خط روند صعودی از کف‌ها
+        ts_idx = w0 + int(np.argmin(l[w0:t + 1]))            # شروع روند صعودی: پایین‌ترین کف
+        if t - ts_idx < CFG.pump_min_bars:
+            return None
+        te_idx = ts_idx + int(np.argmax(h[ts_idx:t + 1]))    # انتهای روند (تاکنون): بالاترین سقف
+        trend_start_px, trend_end_px = float(l[ts_idx]), float(h[te_idx])
+        if trend_start_px <= 0 or (trend_end_px - trend_start_px) / trend_start_px < CFG.gold_min_trend_pct:
+            return None
+
+        piv = [i + ts_idx for i in pivot_idx(l[ts_idx:t + 1], CFG.pivot_left, CFG.pivot_right, "low")]
+        piv = [i for i in piv if i < t]
+        if len(piv) < 2:
+            return None
+        p1, p2 = piv[0], piv[-1]
+        if l[p2] < l[p1]:                    # کف‌ها باید صعودی (بالاتر) باشند
+            return None
+        fit = _fit_trendline([p1, p2], [l[p1], l[p2]])
+        if fit is None:
+            return None
+        slope, intercept = fit
+        if slope < -1e-9:
+            return None
+        line = lambda x: slope * x + intercept
+
+        win_start = max(p2, t - 8)
+        if not any(c[k] >= line(k) - CFG.break_buffer_atr * a for k in range(win_start, t)):
+            return None
+        if not (c[t] < line(t) - CFG.break_buffer_atr * a):
+            return None
+
+        last_low = float(l[piv[-1]])
+        if not (c[t] < last_low):            # تاییدیه‌ی دوم: شکست آخرین کف
+            return None
+
+        fib = lambda r: trend_start_px + (trend_end_px - trend_start_px) * r
+        entry = float(fib(fib_r))
+        sl = float(fib(1.0) + CFG.retest_buffer_atr * a)
+        cancel_price = float(sl + CFG.cancel_buffer_atr * a)
+        R = sl - entry
+        if R <= 0 or R / entry > CFG.gold_max_sl_pct or entry >= c[t] - CFG.gold_min_entry_gap_atr * a:
+            return None
+        tps = [float(fib(0.5)), float(fib(0.236)), float(fib(0.0))]
+        if any(tp >= entry for tp in tps) or c[t] <= tps[-1]:
+            return None
+
+        reversal_candle = is_bearish_reversal(o, h, l, c, t) or is_bearish_reversal(o, h, l, c, piv[-1])
+        vol_ratio = v[t] / vs[t] if vs[t] > 0 else 0
+        comp = dict(trendline=2, structure_break=2, fib_zone=2,
+                    reversal_candle=1 if reversal_candle else 0,
+                    volume=1 if vol_ratio >= 1.2 else 0)
+        score = sum(comp.values())
+        return dict(
+            side=-1, entry=entry, sl=sl, tps=tps, R=float(R), atr=float(a), cancel_price=cancel_price,
+            pump_low=trend_start_px, pump_high=trend_end_px, pump_pct=(trend_end_px - trend_start_px) / trend_start_px,
+            line_pts=[(int(p1), float(l[p1])), (int(p2), float(l[p2]))], slope=float(slope),
+            rsi=float(rsi[t]), vol_ratio=float(vol_ratio), comp=comp, score=score,
+            L=int(ts_idx), max_score=8, is_gold=True, fib_levels={"0": trend_start_px, "0.786": entry, "1": float(fib(1.0))},
         )
 
 
@@ -881,10 +1053,12 @@ def make_chart(sym, tf, P, t, sig, bars=110):
     ax.set_ylim(lo - pad, hi + pad)
     ax.set_xlim(n0 - 1, right + 8)
 
-    base = sym[:-4] if sym.endswith("USDT") else sym
+    is_gold = sig.get("is_gold", False)
+    base = "XAU/USD (PAXG)" if is_gold else (sym[:-4] if sym.endswith("USDT") else sym) + "/USDT"
     ax.set_title(
-        f"#{base}/USDT {tf} {'SHORT' if short_ else 'LONG'} | {CFG.label} Futures | "
-        f"شکست ترندلاین + ری‌تست | Score {sig['score']}/{sig['max_score']}",
+        f"#{base} {tf} {'SHORT' if short_ else 'LONG'} | "
+        f"{'Gold Reversal' if is_gold else CFG.label + ' Futures | شکست ترندلاین + ری‌تست'} | "
+        f"Score {sig['score']}/{sig['max_score']}",
         color="#ffffff", fontsize=11, fontweight="bold")
     ax.legend(loc="upper left", fontsize=8, facecolor=BG, edgecolor="#30363d", labelcolor=FG)
 
@@ -914,17 +1088,22 @@ def roi(price, entry):
 
 def build_message(sym, tf, sig, info):
     short_ = sig["side"] == -1
-    base = sym[:-4] if sym.endswith("USDT") else sym
+    is_gold = sig.get("is_gold", False)
+    base = "XAU" if is_gold else (sym[:-4] if sym.endswith("USDT") else sym)
     entry = sig["entry"]
     lev = str(CFG.leverage).translate(FA_DIGITS)
     risk_pct = sig["R"] / entry * 100
 
     L = []
-    L.append(f"⭕️#{base}/ USDT {'📉' if short_ else '📈'}💰")
+    L.append(f"⭕️#{base}/USD {'📉' if short_ else '📈'}💰" if is_gold else f"⭕️#{base}/ USDT {'📉' if short_ else '📈'}💰")
     L.append("")
     L.append("🔴Cross (Short) 📉" if short_ else "🟢Cross (Long) 📈")
-    L.append(f"با تایید شکست ترند لاین ({'فید پامپ' if short_ else 'فید دامپ'})")
-    L.append(f"⏱ تایم‌فریم: {tf} | {CFG.label} Futures")
+    if is_gold:
+        L.append("با تایید شکست ترند لاین + شکست آخرین " + ("سقف" if not short_ else "کف") + " (بازگشت روند)")
+        L.append(f"⏱ تایم‌فریم: {tf} | XAU/USD (پروکسی: PAXG)")
+    else:
+        L.append(f"با تایید شکست ترند لاین ({'فید پامپ' if short_ else 'فید دامپ'})")
+        L.append(f"⏱ تایم‌فریم: {tf} | {CFG.label} Futures")
     if info.get("candle_time"):
         L.append(f"🕒 کندل تایید: {info['candle_time']} UTC")
     L.append("")
@@ -936,32 +1115,50 @@ def build_message(sym, tf, sig, info):
         L.append(f"Tp {i + 1} : {roi(sig['tps'][i], entry)}% {icons[i]} ({fp(sig['tps'][i])})")
     L.append("")
     L.append(f"Stop Loss : {fp(sig['sl'])} ⛔️ (ریسک {risk_pct:.1f}% قیمت)")
-    L.append(f"❌ کنسل‌شدن سیگنال در صورت بسته‌شدن قاطع کندل بالای: {fp(sig['cancel_price'])}")
+    L.append(f"❌ کنسل‌شدن سیگنال در صورت بسته‌شدن قاطع کندل بالای: {fp(sig['cancel_price'])}"
+             if short_ else f"❌ کنسل‌شدن سیگنال در صورت بسته‌شدن قاطع کندل پایین: {fp(sig['cancel_price'])}")
     L.append("")
-    L.append(f"با نیم الی یک درصد سرمایه با اهرم {lev}× وارد شوید 🏦")
-    L.append(f"تی پی‌ها با اهرم {lev}× محاسبه شده")
-    L.append("")
+    if not is_gold:
+        L.append(f"با نیم الی یک درصد سرمایه با اهرم {lev}× وارد شوید 🏦")
+        L.append(f"تی پی‌ها با اهرم {lev}× محاسبه شده")
+        L.append("")
     L.append("📊 تحلیل:")
-    L.append(f"• {'پامپ' if short_ else 'دامپ'} شناسایی‌شده: {sig['pump_pct'] * 100:.1f}% "
-              f"({fp(sig['pump_low'])} → {fp(sig['pump_high'])})")
-    L.append("• ترندلاین از دو سقف/کف پیوتال رسم و با تایید بسته‌شدن کندل شکسته شد")
-    if sig["comp"].get("divergence"):
-        L.append("• واگرایی RSI نزولی تایید شد" if short_ else "• واگرایی RSI صعودی تایید شد")
-    if sig["comp"].get("reversal_candle"):
-        L.append("• الگوی کندلی بازگشتی (پین‌بار/انگالف) مشاهده شد")
-    if sig["comp"].get("volume_climax"):
-        L.append("• حجم در نقطه‌ی سقف/کف، نشانه‌ی اتمام حرکت (Climax) دارد")
-    L.append(f"• روند تایم‌فریم بالاتر: {'خنثی/نزولی ✅' if short_ else 'خنثی/صعودی ✅'} (فیلتر ضدترند رد نشد)")
+    if is_gold:
+        L.append(f"• روند شناسایی‌شده ({'نزولی' if not short_ else 'صعودی'} در تایم‌فریم بالاتر): "
+                  f"{sig['pump_pct'] * 100:.2f}% ({fp(sig['pump_low'])} ↔ {fp(sig['pump_high'])})")
+        L.append("• خط روند رسم و با تایید بسته‌شدن کندل شکسته شد")
+        L.append(f"• آخرین {'سقف' if not short_ else 'کف'} ساختار هم شکسته شد (تاییدیه‌ی دوم بازگشت روند)")
+        fl = sig.get("fib_levels", {})
+        L.append(f"• فیبوی ۰/۰٫۷۸۶/۱ روی حرکت رسم شد: ورود از سطح ۰٫۷۸۶، حد ضرر فراتر از سطح ۱")
+        if sig["comp"].get("reversal_candle"):
+            L.append("• الگوی کندلی بازگشتی هم دیده شد")
+    else:
+        L.append(f"• {'پامپ' if short_ else 'دامپ'} شناسایی‌شده: {sig['pump_pct'] * 100:.1f}% "
+                  f"({fp(sig['pump_low'])} → {fp(sig['pump_high'])})")
+        L.append("• ترندلاین از دو سقف/کف پیوتال رسم و با تایید بسته‌شدن کندل شکسته شد")
+        if sig["comp"].get("divergence"):
+            L.append("• واگرایی RSI نزولی تایید شد" if short_ else "• واگرایی RSI صعودی تایید شد")
+        if sig["comp"].get("reversal_candle"):
+            L.append("• الگوی کندلی بازگشتی (پین‌بار/انگالف) مشاهده شد")
+        if sig["comp"].get("volume_climax"):
+            L.append("• حجم در نقطه‌ی سقف/کف، نشانه‌ی اتمام حرکت (Climax) دارد")
+        L.append(f"• روند تایم‌فریم بالاتر: {'خنثی/نزولی ✅' if short_ else 'خنثی/صعودی ✅'} (فیلتر ضدترند رد نشد)")
     L.append(f"• حجم کندل شکست: {sig['vol_ratio']:.1f}× میانگین")
     L.append(f"• RSI: {sig['rsi']:.0f}")
     L.append(f"• امتیاز سیگنال: {sig['score']}/{sig['max_score']}")
-    L.append("🧠 استراتژی: Trendline Break " + ("Short (Pump Fade)" if short_ else "Long (Dump Fade)") +
-              " + Pending Retest + ضدترند")
+    if is_gold:
+        L.append("🧠 استراتژی: Gold Trend-Reversal (Structure Break + Fib 0.786-1)")
+    else:
+        L.append("🧠 استراتژی: Trendline Break " + ("Short (Pump Fade)" if short_ else "Long (Dump Fade)") +
+                  " + Pending Retest + ضدترند")
     if CFG.send_chart:
         L.append("📎 چارت پیوست شده")
     L.append("")
     L.append(CFG.brand_name)
     L.append(CFG.handle)
+    if is_gold:
+        L.append("")
+        L.append("طلااااااا💯💯💯💯💯💯")
     return "\n".join(L)
 
 
@@ -1086,7 +1283,56 @@ def jsave(path, obj):
 LIVE_BARS = 400
 
 
+def analyze_gold(tf):
+    """مسیر تحلیل مخصوص طلا: قرارداد واقعی XAU-USDT-SWAP روی OKX (Commodity Perp)."""
+    if tf != CFG.gold_tf:
+        return None
+    inst = CFG.gold_inst_id
+    try:
+        L = fetch_klines(CFG.gold_symbol, tf, LIVE_BARS, inst_override=inst)
+    except Exception as e:  # noqa
+        log.warning("gold fetch failed: %s", e)
+        return None
+    lb = CFG.gold_lookback
+    if len(L) < lb + 30:
+        return None
+    P = prep(L)
+
+    now_ms = time.time() * 1000
+    t = len(L) - 1
+    tc = int(P["t"][t]) + TF_MS[tf]
+    if now_ms - tc > CFG.max_age_min * 60_000:
+        return None
+
+    try:
+        hd = fetch_klines(CFG.gold_symbol, CFG.gold_htf, 300, inst_override=inst)
+        H1 = htf_pack(hd, CFG.gold_htf)
+        htf_trend = trend_at(H1, tc)
+    except Exception as e:  # noqa
+        log.warning("gold htf fetch failed: %s", e)
+        return None
+    if htf_trend == 0:
+        return None   # بدون روند مشخص در تایم بالاتر، طبق تعریف استراتژی سیگنالی صادر نمی‌شود
+
+    sig = detect_gold_reversal(P, t, htf_trend, lb)
+    if sig is None:
+        return None
+
+    px = last_price(CFG.gold_symbol, inst_override=inst)
+    if px:
+        if sig["side"] == -1 and (px >= sig["sl"] or px <= sig["tps"][-1]):
+            return None
+        if sig["side"] == 1 and (px <= sig["sl"] or px >= sig["tps"][-1]):
+            return None
+
+    info = {"candle_time": datetime.fromtimestamp(tc / 1000, timezone.utc).strftime("%H:%M")}
+    return sig, info, build_message(CFG.gold_symbol, tf, sig, info), int(P["t"][t]), dict(P=P, t=t)
+
+
 def analyze_symbol(sym, tf):
+    if sym == CFG.gold_symbol:
+        return analyze_gold(tf)
+
     h1_tf, _h2_tf = MTF_MAP[tf]
     lb = pump_lookback_for(tf)
     sl_pct = max_sl_pct_for(tf)
@@ -1203,7 +1449,8 @@ def scan_tf(tf, dry=False):
 # ----------------------------------------------------------------------------
 def _last_candle(symbol, tf):
     try:
-        df = fetch_klines(symbol, tf, 3)
+        inst_override = CFG.gold_inst_id if symbol == CFG.gold_symbol else None
+        df = fetch_klines(symbol, tf, 3, inst_override=inst_override)
         if df.empty:
             return None
         row = df.iloc[-1]
@@ -1249,7 +1496,10 @@ def monitor_positions(dry=False):
 
         # --- مرحله ۱: سیگنال معلق ---
         if status == "pending":
-            age_days = (time.time() - pos["opened_at"]) / 86400
+            age_sec = time.time() - pos["opened_at"]
+            if age_sec < CFG.min_activation_delay_sec:
+                continue   # هنوز مهلت حداقلی نگذشته؛ فرصت بده کاربر پیام رو ببینه و دستی وارد بشه
+            age_days = age_sec / 86400
             touched = (candle["h"] >= entry) if side == -1 else (candle["l"] <= entry)
             closed_beyond_cancel = (candle["c"] > cancel_price) if side == -1 else (candle["c"] < cancel_price)
 
@@ -1260,7 +1510,7 @@ def monitor_positions(dry=False):
                     pos["activated_at"] = int(time.time())
                     changed = True
                     post_status(pos, STATUS_TEXT["open"], dry)
-                    if CFG.okx_demo_trading and not dry:
+                    if CFG.okx_demo_trading and not dry and pos["symbol"] != CFG.gold_symbol:
                         demo = place_demo_trade(pos["symbol"], side, sl, tps[1])
                         if demo:
                             pos["demo"] = demo
@@ -1424,9 +1674,9 @@ def maybe_send_scheduled_reports(dry=False):
 # اجرای دائمی / یک‌باره
 # ----------------------------------------------------------------------------
 def once(dry=False):
+    monitor_positions(dry)   # اول پوزیشن‌های قدیمی رو چک کن، بعد دنبال سیگنال جدید بگرد
     for tf in SIGNAL_TFS:
         scan_tf(tf, dry)
-    monitor_positions(dry)
     maybe_send_scheduled_reports(dry)
 
 
