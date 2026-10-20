@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>داشبورد استراتژی ۲</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--card:#f4f5f7;--mut:#6b7280;--g:#16a34a;--r:#dc2626;--y:#d97706;--b:#2563eb}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1117;--fg:#e6edf3;--card:#1a2029;--mut:#8b949e}}
+*{box-sizing:border-box}
+body{margin:0;padding:12px;background:var(--bg);color:var(--fg);font-family:Tahoma,system-ui,sans-serif;font-size:14px}
+h1{font-size:18px;margin:4px 0 10px}
+.bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.bar button{border:0;background:var(--card);color:var(--fg);padding:7px 12px;border-radius:8px;cursor:pointer}
+.bar button.on{background:var(--b);color:#fff}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:10px 0}
+.c{background:var(--card);border-radius:10px;padding:10px}
+.c small{color:var(--mut);display:block}
+.c b{font-size:17px}
+.g{color:var(--g)}.r{color:var(--r)}.y{color:var(--y)}
+.box{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:520px}
+th,td{padding:7px 6px;text-align:right;border-bottom:1px solid var(--card);white-space:nowrap}
+th{color:var(--mut);font-weight:normal}
+.tag{padding:2px 8px;border-radius:6px;font-size:12px;color:#fff}
+</style>
+</head>
+<body>
+<h1>داشبورد استراتژی ۲ (سوییپ ۱۵ دقیقه‌ای ← CHoCH ۱ دقیقه‌ای ← FVG)</h1>
+<div class="bar" id="presets"></div>
+<div class="grid" id="stats"></div>
+<div class="box"><table>
+<thead><tr><th>ثبت</th><th>نماد</th><th>جهت</th><th>ورود</th><th>SL</th><th>TP</th><th>وضعیت</th><th>نتیجه</th></tr></thead>
+<tbody id="rows"></tbody>
+</table></div>
+<script>
+var PRE=[['all','همه'],['today','امروز'],['w7','۷ روز'],['d30','۳۰ روز']];
+var S={pre:'all'},DATA=[];
+var $=function(i){return document.getElementById(i)};
+function fa(n){return Number(n).toLocaleString('fa-IR')}
+function dt(t){return t?new Date(t*1000).toLocaleString('fa-IR',{timeZone:'Asia/Tehran',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
+function inRange(r){
+  if(S.pre==='all')return true;
+  var now=Date.now()/1000,t=r.t_created||0;
+  if(S.pre==='today'){var d=new Date(now*1000);var s0=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime()/1000;return t>=s0}
+  if(S.pre==='w7')return t>=now-7*86400;
+  if(S.pre==='d30')return t>=now-30*86400;
+  return true;
+}
+function stLabel(r){
+  var m={pending:['در انتظار','#6b7280'],open:['فعال شد','#2563eb'],win:['TP خورد','#16a34a'],loss:['SL خورد','#dc2626'],cancel:['کنسل','#d97706']};
+  return m[r.status]||[r.status,'#6b7280'];
+}
+function draw(){
+  $('presets').innerHTML=PRE.map(function(p){return "<button data-v='"+p[0]+"' class='"+(S.pre===p[0]?'on':'')+"'>"+p[1]+'</button>'}).join('');
+  var f=DATA.filter(inRange);
+  var wins=f.filter(function(r){return r.status==='win'}).length;
+  var losses=f.filter(function(r){return r.status==='loss'}).length;
+  var cancels=f.filter(function(r){return r.status==='cancel'}).length;
+  var open=f.filter(function(r){return r.status==='open'||r.status==='pending'}).length;
+  var closed=wins+losses;
+  var wr=closed?wins/closed*100:0;
+  var pnl=f.reduce(function(q,r){return q+(r.pct||0)},0);
+  $('stats').innerHTML=[
+    ['وین‌ریت',closed?Math.round(wr)+'٪':'—',wr>=50?'g':'r'],
+    ['تعداد کل سیگنال',fa(f.length),''],
+    ['موفق (TP)',fa(wins),'g'],
+    ['ناموفق (SL)',fa(losses),'r'],
+    ['کنسل شده',fa(cancels),'y'],
+    ['در انتظار / فعال',fa(open),'']
+  ].map(function(x){return "<div class='c'><small>"+x[0]+"</small><b class='"+x[2]+"'>"+x[1]+'</b></div>'}).join('')+
+  "<div class='c'><small>بازدهی مجموع (قیمت، بدون اهرم)</small><b class='"+(pnl>=0?'g':'r')+"'>"+(pnl>=0?'+':'')+pnl.toFixed(2)+'٪</b></div>';
+  f.sort(function(a,b){return (b.t_created||0)-(a.t_created||0)});
+  $('rows').innerHTML=f.slice(0,300).map(function(r){
+    var s=stLabel(r);
+    var res=r.pct!=null?"<b class='"+(r.pct>=0?'g':'r')+"'>"+(r.pct>=0?'+':'')+r.pct.toFixed(2)+'٪</b>':'—';
+    return '<tr><td>'+dt(r.t_created)+'</td><td>'+String(r.sym).replace('USDT','')+'</td><td>'+(r.side===-1?'Short':'Long')+'</td><td>'+Number(r.entry).toPrecision(6)+'</td><td>'+Number(r.sl).toPrecision(6)+'</td><td>'+Number(r.tp).toPrecision(6)+"</td><td><span class='tag' style='background:"+s[1]+"'>"+s[0]+'</span></td><td>'+res+'</td></tr>';
+  }).join('');
+}
+$('presets').onclick=function(e){var v=e.target.dataset.v;if(v){S.pre=v;draw()}};
+function load(){fetch('strategy2.json?t='+Date.now()).then(function(r){return r.json()}).then(function(d){DATA=d||[];draw()}).catch(function(){$('rows').innerHTML="<tr><td colspan=8>داده‌ای نیست</td></tr>"})}
+draw();load();setInterval(load,60000);
+</script>
+</body>
+</html>
