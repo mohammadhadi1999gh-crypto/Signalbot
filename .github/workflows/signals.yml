@@ -2,12 +2,8 @@ name: signals
 
 on:
   schedule:
-    - cron: "*/5 * * * *"      # every 5 minutes (GitHub may delay runs)
-  workflow_dispatch:
-    inputs:
-      mode:
-        description: "once = scan | check = test connection"
-        default: "check"
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
 
 concurrency:
   group: signals
@@ -22,14 +18,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-
       - run: pip install -r requirements.txt
-
       - name: restore state
         uses: actions/cache/restore@v4
         with:
@@ -37,27 +30,25 @@ jobs:
             state.json
             positions.json
             trades_log.json
+            features.json
+            params.json
+            control.json
+            tg_offset.json
           key: botstate-${{ github.run_id }}
           restore-keys: botstate-
       - name: run bot
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          STRAT_MODE: fvg
+          FVG_TFS: "15m,30m,1h,2h,4h,6h,12h,1d"
+          EXCHANGE: okx
+          AUTO_UNIVERSE: "1"
+          UNIVERSE_SIZE: "150"
+          WORKERS: "6"
           SCAN_BACK: "1"
           MAX_AGE_MIN: "25"
-          SENSITIVITY: ultra      # conservative | balanced | aggressive | ultra
-          TRENDLINES: "1"
-          FVG_TL_STRATEGY: "0"   # only Pump-Fade Grid signals are sent
-          SPIKE_HUNTER: "0"
-          HUNTER_LIMITS: "0"
-          WORKERS: "10"
-          EXCHANGE: okx          # okx | binance | kcex
-          AUTO_UNIVERSE: "1"      # scan top KCEX gainers automatically instead of a fixed list
-          UNIVERSE_SIZE: "150"   # raise further to scan more of the market; more calls = slower + more rate-limit risk
-          GRID_STRATEGY: "1"      # Pump-Fade Grid (reverse-engineered fixed-ratio short)
-          REAL_LEVERAGE: "5"      # your real account leverage, for the liquidation warning line
-        run: python bot.py ${{ github.event.inputs.mode || 'once' }}
-
+        run: python run_gh.py
       - name: save state
         if: always()
         uses: actions/cache/save@v4
@@ -66,4 +57,26 @@ jobs:
             state.json
             positions.json
             trades_log.json
+            features.json
+            params.json
+            control.json
+            tg_offset.json
           key: botstate-${{ github.run_id }}
+      - name: upload dashboard
+        if: always()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: scan
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
