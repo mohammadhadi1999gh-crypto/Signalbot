@@ -2,7 +2,7 @@ name: signals
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/5 * * * *"      # GitHub may delay scheduled runs
   workflow_dispatch: {}
 
 concurrency:
@@ -30,9 +30,11 @@ jobs:
             state.json
             positions.json
             trades_log.json
-            features.json
-            params.json
-            control.json
+            features.jsonl
+            outcomes.jsonl
+            outcomes_done.json
+            settings.json
+            learned.json
             tg_offset.json
           key: botstate-${{ github.run_id }}
           restore-keys: botstate-
@@ -42,6 +44,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           STRAT_MODE: fvg
           FVG_TFS: "15m,30m,1h,2h,4h,6h,12h,1d"
+          FVG_MIN_VOL_USDT: "5000000"
           EXCHANGE: okx
           AUTO_UNIVERSE: "1"
           UNIVERSE_SIZE: "150"
@@ -57,9 +60,11 @@ jobs:
             state.json
             positions.json
             trades_log.json
-            features.json
-            params.json
-            control.json
+            features.jsonl
+            outcomes.jsonl
+            outcomes_done.json
+            settings.json
+            learned.json
             tg_offset.json
           key: botstate-${{ github.run_id }}
       - name: upload dashboard
