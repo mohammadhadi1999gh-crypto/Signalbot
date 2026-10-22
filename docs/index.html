@@ -1,1 +1,92 @@
-<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>داشبورد</title><style>body{font-family:Tahoma,sans-serif;margin:12px;font-size:14px}table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid #ddd;text-align:right}.g{color:#16a34a}.r{color:#dc2626}</style></head><body><h2>داشبورد سیگنال‌ها</h2><div id="s"></div><table><thead><tr><th>نماد</th><th>TF</th><th>ورود</th><th>وضعیت</th><th>نتیجه</th></tr></thead><tbody id="r"></tbody></table><p id="u"></p><script>fetch('data.json?t='+Date.now()).then(x=>x.json()).then(d=>{const a=d.signals||[];const c=a.filter(s=>['win','loss','be'].includes(s.result));const w=c.filter(s=>s.result==='win').length;const tot=c.reduce((x,s)=>x+(s.final_pct||0),0);document.getElementById('s').innerHTML='ربات: '+(d.enabled?'<b class=g>روشن</b>':'<b>خاموش</b>')+' | وین‌ریت: '+(c.length?Math.round(w/c.length*100):0)+'٪ | برایند: '+tot.toFixed(1)+'٪ | بسته: '+c.length;document.getElementById('r').innerHTML=a.slice().reverse().slice(0,200).map(s=>'<tr><td>'+String(s.symbol||'').replace('USDT','')+'</td><td>'+(s.tf||'')+'</td><td>'+(+s.entry||0).toPrecision(6)+'</td><td>'+(s.status||'')+'</td><td class="'+((s.final_pct||0)>=0?'g':'r')+'">'+(s.final_pct!=null?s.final_pct.toFixed(1)+'٪':'—')+'</td></tr>').join('');document.getElementById('u').textContent='آخرین به‌روزرسانی: '+new Date(d.generated_at*1000).toLocaleString('fa-IR')}).catch(()=>{document.getElementById('s').textContent='داده‌ای پیدا نشد'})</script></body></html>
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>داشبورد سیگنال‌ها</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--card:#f4f5f7;--mut:#6b7280;--g:#16a34a;--r:#dc2626;--y:#d97706;--b:#2563eb}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1117;--fg:#e6edf3;--card:#1a2029;--mut:#8b949e}}
+*{box-sizing:border-box}
+body{margin:0;padding:12px;background:var(--bg);color:var(--fg);font-family:Tahoma,system-ui,sans-serif;font-size:14px}
+h1{font-size:18px;margin:4px 0 8px}
+.state{display:inline-block;padding:4px 10px;border-radius:8px;color:#fff;margin-bottom:12px}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px}
+.tabs button{border:0;background:var(--card);color:var(--fg);padding:8px 14px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.tabs button.on{background:var(--b);color:#fff}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
+.c{background:var(--card);border-radius:10px;padding:10px}
+.c small{color:var(--mut);display:block}.c b{font-size:18px}
+.g{color:var(--g)}.r{color:var(--r)}.y{color:var(--y)}
+.box{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:560px}
+th,td{padding:8px 6px;text-align:right;border-bottom:1px solid var(--card);white-space:nowrap}
+th{color:var(--mut);font-weight:normal}
+.tag{padding:2px 8px;border-radius:6px;font-size:12px;color:#fff}
+#upd{color:var(--mut);font-size:12px;margin-top:8px}
+</style>
+</head>
+<body>
+<h1>داشبورد سیگنال‌ها</h1>
+<div id="state"></div>
+<div class="tabs" id="tabs"></div>
+<div class="grid" id="stats"></div>
+<div class="box"><table><thead><tr><th>زمان</th><th>نماد</th><th>TF</th><th>جهت</th><th>ورود</th><th>SL</th><th>وضعیت</th><th>نتیجه</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div id="upd"></div>
+<script>
+const P=[["امروز",0],["۷ روز",7],["۳۰ روز",30],["سال",365],["همه",-1]];
+let data={signals:[]},per=1;
+const $=id=>document.getElementById(id);
+const fmt=(x,d=1)=>(x>0?"+":"")+x.toFixed(d)+"٪";
+function status(s){
+  const n=(s.hit_tps||[]).filter(Boolean).length;
+  if(s.status==="pending")return["فعال نشده","#6b7280"];
+  if(s.status==="cancelled")return["کنسل شده","#d97706"];
+  if(s.status==="open")return[n?"فعال — TP"+n+" خورد":"فعال شده","#2563eb"];
+  if(s.result==="win")return["بسته با سود — TP"+n,"#16a34a"];
+  if(s.result==="loss")return["بسته با ضرر — SL","#dc2626"];
+  return["سر به سر","#6b7280"];
+}
+function cutoff(d){
+  if(d<0)return 0;const t=new Date();t.setHours(0,0,0,0);
+  return t.getTime()/1000-d*86400;
+}
+function render(){
+  const c=cutoff(P[per][1]);
+  const all=data.signals||[];
+  const closed=all.filter(s=>["win","loss","be"].includes(s.result)&&(s.closed_at||0)>=c);
+  const w=closed.filter(s=>s.result==="win").length,l=closed.filter(s=>s.result==="loss").length;
+  const tot=closed.reduce((a,s)=>a+(s.final_pct||0),0);
+  const wr=closed.length?w/closed.length*100:0;
+  $("stats").innerHTML=[
+    ["وین‌ریت",wr.toFixed(0)+"٪",wr>=50?"g":"r"],
+    ["برایند",fmt(tot),tot>=0?"g":"r"],
+    ["معاملات بسته",closed.length+" ("+w+" برد / "+l+" باخت)",""],
+    ["باز / در انتظار",all.filter(s=>s.status==="open"||s.status==="pending").length,"y"]
+  ].map(x=>'<div class="c"><small>'+x[0]+'</small><b class="'+x[2]+'">'+x[1]+'</b></div>').join("");
+  const inP=all.filter(s=>(s.opened_at||0)>=c||s.status==="open"||s.status==="pending");
+  $("rows").innerHTML=inP.sort((a,b)=>(b.opened_at||0)-(a.opened_at||0)).slice(0,300).map(s=>{
+    const[t,col]=status(s);
+    const d=s.opened_at?new Date(s.opened_at*1000).toLocaleString("fa-IR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
+    const res=s.final_pct!=null&&s.result?'<b class="'+(s.final_pct>=0?"g":"r")+'">'+fmt(s.final_pct)+'</b>':"—";
+    return"<tr><td>"+d+"</td><td>"+String(s.symbol||"").replace("USDT","")+"</td><td>"+(s.tf||"")+"</td><td>"+(s.side===-1?"Short":"Long")+"</td><td>"+(+s.entry).toPrecision(6)+"</td><td>"+(+s.sl).toPrecision(6)+'</td><td><span class="tag" style="background:'+col+'">'+t+"</span></td><td>"+res+"</td></tr>";
+  }).join("");
+}
+function setState(){
+  const on=!!data.enabled;
+  $("state").innerHTML='<span class="state" style="background:'+(on?"#16a34a":"#6b7280")+'">ربات: '+(on?"روشن":"خاموش")+'</span>';
+}
+$("tabs").innerHTML=P.map((p,i)=>'<button data-i="'+i+'">'+p[0]+"</button>").join("");
+$("tabs").onclick=e=>{const i=e.target.dataset.i;if(i!=null){per=+i;mark();render()}};
+function mark(){[...$("tabs").children].forEach((b,i)=>b.classList.toggle("on",i===per))}
+mark();
+function load(){
+  fetch("data.json?t="+Date.now()).then(r=>r.json()).then(d=>{
+    data=d;setState();render();
+    $("upd").textContent="آخرین به‌روزرسانی: "+new Date(d.generated_at*1000).toLocaleString("fa-IR");
+  }).catch(()=>{$("rows").innerHTML="<tr><td colspan=8>داده‌ای پیدا نشد</td></tr>"});
+}
+load();
+</script>
+</body>
+</html>
