@@ -1,10 +1,18 @@
+name: pending-updates
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
       - name: pending updates
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         run: |
-          curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getUpdates?timeout=0&limit=100" | python3 -c "import sys,json,time
-          d=json.load(sys.stdin); r=d.get('result',[])
-          print('count',len(r))
-          for u in r[-20:]:
-              m=u.get('message') or {}
-              print(u['update_id'], 'age_s', int(time.time()-m.get('date',0)), repr((m.get('text') or '')[:40]))"
+          curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getUpdates?timeout=0&limit=100" -o updates.json
+          head -c 4000 updates.json; echo
