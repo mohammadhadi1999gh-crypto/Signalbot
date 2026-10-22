@@ -107,13 +107,49 @@ def install(bot):
                         max_score=len(comp) + 1, fvg=True)
         return None
 
+    MIN_VOL = float(os.getenv('FVG_MIN_VOL_USDT', '5000000'))
+    _elig = {'t': 0, 'set': None}
+
+    def eligible(sym):
+        """Liquid USDT-SWAP symbols only. Refreshed every 30 minutes; fails open if the call fails."""
+        now = time.time()
+        if _elig['set'] is None or now - _elig['t'] > 1800:
+            try:
+                import requests
+                base = os.getenv('OKX_BASE', 'https://www.okx.com')
+                r = requests.get(f'{base}/api/v5/market/tickers', params={'instType': 'SWAP'}, timeout=20)
+                good = set()
+                for x in r.json().get('data', []):
+                    inst = x.get('instId', '')
+                    if not inst.endswith('-USDT-SWAP'):
+                        continue
+                    last = float(x.get('last') or 0)
+                    vol_usd = float(x.get('volCcy24h') or 0) * last
+                    if vol_usd >= MIN_VOL:
+                        good.add(inst.replace('-USDT-SWAP', 'USDT'))
+                _elig['set'] = good
+                _elig['t'] = now
+            except Exception as e:  # noqa
+                print('eligible refresh failed', e)
+                if _elig['set'] is None:
+                    return True
+        return sym in _elig['set'] if _elig['set'] else True
+
     _orig_an = bot.analyze_symbol
     _orig_msg = bot.build_message
 
     def analyze(sym, tf):
         if sym == CFG.gold_symbol:
-            return _orig_an(sym, tf)
+            return None  # old gold strategy removed
         if tf not in TFS or bot.perf_gate_blocked(tf):
+            return None
+        if not eligible(sym):
+            return None
+        import controls
+        import learner
+        st = controls.load_settings()
+        now_h = controls.dt.datetime.now(controls.TEHRAN).hour
+        if not controls.in_hours(st) or learner.is_blocked(sym, tf, now_h):
             return None
         lb = bot.pump_lookback_for(tf)
         L = bot.fetch_klines(sym, tf, bot.LIVE_BARS)
@@ -127,11 +163,15 @@ def install(bot):
         sig = detect_fvg(P, t, lb, bot.max_sl_pct_for(tf))
         if sig is None:
             return None
+        if st.get('sides') == 'long':
+            return None  # this strategy only produces shorts
         if sym != 'BTCUSDT' and bot.btc_blocks(-1):
             return None
         px = bot.last_price(sym)
         if px and px >= sig['entry']:
             return None
+        import features
+        features.record_signal(sym, tf, P, t, sig, lb)
         info = {'candle_time': bot.datetime.fromtimestamp(tc / 1000, bot.timezone.utc).strftime('%H:%M')}
         return sig, info, bot.build_message(sym, tf, sig, info), int(P['t'][t]), dict(P=P, t=t)
 
@@ -144,6 +184,7 @@ def install(bot):
 
     bot.analyze_symbol = analyze
     bot.build_message = build_message
+    bot._fvg_detect = detect_fvg  # used by backtest_fvg.py
     # the FVG rules are the gate; the old score threshold does not apply
     CFG.min_score = 0
     print('strategy installed: fvg')
