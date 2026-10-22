@@ -179,8 +179,19 @@ def install(bot):
         m = _orig_msg(sym, tf, sig, info)
         if not sig.get('fvg'):
             return m
-        return m.replace('Trendline Break Short (Pump Fade) + Pending Retest + ضدترند',
-                         'FVG Short (Sweep + MSS) + Pending Retest')
+        m = m.replace('Trendline Break Short (Pump Fade) + Pending Retest + ضدترند',
+                      'FVG Short (Sweep + MSS) + Pending Retest')
+        # replace any leftover old strategy line (e.g. Trendline / Pump Fade wording)
+        m = re.sub(r'🧠 استراتژی:.*', '🧠 استراتژی: FVG Short (Sweep + MSS) + Pending Retest', m)
+        m = m.replace('Cross (Short)', 'FVG Short').replace('Cross (Long)', 'FVG Long')
+        out = []
+        for line in m.split('\n'):
+            if 'ضدترند' in line:
+                continue  # old anti-trend filter line
+            if 'شکست ترند' in line or 'Trendline' in line or 'فید پامپ' in line or 'فید پمپ' in line:
+                line = 'با تایید Sweep نقدینگی + MSS روی FVG تازه'
+            out.append(line)
+        return '\n'.join(out)
 
     bot.analyze_symbol = analyze
     bot.build_message = build_message
