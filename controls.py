@@ -15,7 +15,7 @@ import bot
 
 SETTINGS_PATH = os.path.join(bot.HERE, 'settings.json')
 OFFSET_PATH = os.path.join(bot.HERE, 'tg_offset.json')
-MAX_CMD_AGE = 600
+MAX_CMD_AGE = 3600  # GitHub cron can lag; keep commands up to 1h old
 TEHRAN = dt.timezone(dt.timedelta(hours=3, minutes=30))
 
 DEFAULTS = {
