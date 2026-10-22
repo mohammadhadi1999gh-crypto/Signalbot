@@ -3,90 +3,105 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>داشبورد سیگنال‌ها</title>
+<title>مانیتور و گزارش ربات</title>
 <style>
-:root{--bg:#fff;--fg:#1a1a1a;--card:#f4f5f7;--mut:#6b7280;--g:#16a34a;--r:#dc2626;--y:#d97706;--b:#2563eb}
+:root{--bg:#fff;--fg:#1a1a1a;--card:#f3f4f6;--mut:#6b7280;--g:#16a34a;--r:#dc2626;--y:#d97706;--b:#2563eb}
 @media(prefers-color-scheme:dark){:root{--bg:#0e1117;--fg:#e6edf3;--card:#1a2029;--mut:#8b949e}}
 *{box-sizing:border-box}
 body{margin:0;padding:12px;background:var(--bg);color:var(--fg);font-family:Tahoma,system-ui,sans-serif;font-size:14px}
-h1{font-size:18px;margin:4px 0 8px}
-.state{display:inline-block;padding:4px 10px;border-radius:8px;color:#fff;margin-bottom:12px}
-.tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px}
-.tabs button{border:0;background:var(--card);color:var(--fg);padding:8px 14px;border-radius:8px;cursor:pointer;white-space:nowrap}
-.tabs button.on{background:var(--b);color:#fff}
-.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
+h1{font-size:18px;margin:4px 0 6px}
+h2{font-size:15px;margin:16px 0 6px}
+.badge{display:inline-block;padding:4px 10px;border-radius:8px;color:#fff;font-size:13px}
+.tabs,.periods{display:flex;gap:6px;overflow-x:auto;margin:10px 0}
+.tabs button,.periods button{border:0;background:var(--card);color:var(--fg);padding:7px 12px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.tabs button.on,.periods button.on{background:var(--b);color:#fff}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 .c{background:var(--card);border-radius:10px;padding:10px}
-.c small{color:var(--mut);display:block}.c b{font-size:18px}
+.c small{color:var(--mut);display:block}.c b{font-size:17px}
 .g{color:var(--g)}.r{color:var(--r)}.y{color:var(--y)}
 .box{overflow-x:auto}
-table{width:100%;border-collapse:collapse;min-width:560px}
-th,td{padding:8px 6px;text-align:right;border-bottom:1px solid var(--card);white-space:nowrap}
+table{width:100%;border-collapse:collapse;min-width:480px}
+th,td{padding:7px 5px;text-align:right;border-bottom:1px solid var(--card);white-space:nowrap}
 th{color:var(--mut);font-weight:normal}
-.tag{padding:2px 8px;border-radius:6px;font-size:12px;color:#fff}
-#upd{color:var(--mut);font-size:12px;margin-top:8px}
+.hide{display:none}
+#upd{color:var(--mut);font-size:12px;margin-top:10px}
 </style>
 </head>
 <body>
-<h1>داشبورد سیگنال‌ها</h1>
-<div id="state"></div>
+<h1>مانیتور و گزارش ربات</h1>
+<span id="badge"></span>
 <div class="tabs" id="tabs"></div>
-<div class="grid" id="stats"></div>
-<div class="box"><table><thead><tr><th>زمان</th><th>نماد</th><th>TF</th><th>جهت</th><th>ورود</th><th>SL</th><th>وضعیت</th><th>نتیجه</th></tr></thead><tbody id="rows"></tbody></table></div>
+
+<section id="t-live">
+  <h2>پوزیشن‌های باز و در انتظار</h2>
+  <div class="box"><table><thead><tr><th>ارز</th><th>TF</th><th>وضعیت</th><th>ورود</th><th>قیمت الان</th><th>تا ورود</th><th>تا SL</th><th>TP خورده</th></tr></thead><tbody id="live"></tbody></table></div>
+  <h2>آخرین معاملات بسته‌شده</h2>
+  <div class="box"><table><thead><tr><th>ارز</th><th>TF</th><th>جهت</th><th>نتیجه</th><th>درصد</th></tr></thead><tbody id="closed"></tbody></table></div>
+</section>
+
+<section id="t-report" class="hide">
+  <div class="periods" id="periods"></div>
+  <div class="grid" id="stats"></div>
+  <h2>ارزها</h2><div class="box"><table><thead><tr><th>ارز</th><th>معاملات</th><th>وین‌ریت</th><th>برایند</th></tr></thead><tbody id="by_symbol"></tbody></table></div>
+  <h2>تایم‌فریم‌ها</h2><div class="box"><table><thead><tr><th>TF</th><th>معاملات</th><th>وین‌ریت</th><th>برایند</th></tr></thead><tbody id="by_tf"></tbody></table></div>
+  <h2>جهت</h2><div class="box"><table><thead><tr><th>جهت</th><th>معاملات</th><th>وین‌ریت</th><th>برایند</th></tr></thead><tbody id="by_side"></tbody></table></div>
+  <h2>ساعت‌ها (تهران)</h2><div class="box"><table><thead><tr><th>ساعت</th><th>معاملات</th><th>وین‌ریت</th><th>برایند</th></tr></thead><tbody id="by_hour"></tbody></table></div>
+  <h2>روز هفته</h2><div class="box"><table><thead><tr><th>روز</th><th>معاملات</th><th>وین‌ریت</th><th>برایند</th></tr></thead><tbody id="by_weekday"></tbody></table></div>
+</section>
+
+<section id="t-sug" class="hide">
+  <h2>ستاپ‌های پیشنهادی (حداقل ۵ معامله، برایند مثبت)</h2>
+  <div class="box"><table><thead><tr><th>ارز</th><th>TF</th><th>ساعت</th><th>معاملات</th><th>وین‌ریت</th><th>برایند</th></tr></thead><tbody id="sug"></tbody></table></div>
+  <p style="color:var(--mut)">این فقط تاریخچه است، نه تضمین سود آینده. نمونه‌ی کم یعنی قابل اعتماد نیست.</p>
+</section>
+
 <div id="upd"></div>
 <script>
-const P=[["امروز",0],["۷ روز",7],["۳۰ روز",30],["سال",365],["همه",-1]];
-let data={signals:[]},per=1;
-const $=id=>document.getElementById(id);
-const fmt=(x,d=1)=>(x>0?"+":"")+x.toFixed(d)+"٪";
-function status(s){
-  const n=(s.hit_tps||[]).filter(Boolean).length;
-  if(s.status==="pending")return["فعال نشده","#6b7280"];
-  if(s.status==="cancelled")return["کنسل شده","#d97706"];
-  if(s.status==="open")return[n?"فعال — TP"+n+" خورد":"فعال شده","#2563eb"];
-  if(s.result==="win")return["بسته با سود — TP"+n,"#16a34a"];
-  if(s.result==="loss")return["بسته با ضرر — SL","#dc2626"];
-  return["سر به سر","#6b7280"];
+const PER=[["امروز","today"],["دیروز","yesterday"],["۷ روز","7d"],["۳۰ روز","30d"],["۹۰ روز","90d"],["سال","365d"],["همه","all"]];
+const TABS=[["مانیتور","t-live"],["گزارش","t-report"],["پیشنهادها","t-sug"]];
+let D=null, per="7d";
+const $=i=>document.getElementById(i);
+const f1=x=>x==null?"—":(x>0?"+":"")+Number(x).toFixed(2)+"٪";
+const cls=x=>x==null?"":(x>=0?"g":"r");
+function tabs(){
+  $("tabs").innerHTML=TABS.map((t,i)=>'<button data-s="'+t[1]+'" class="'+(i?"":"on")+'">'+t[0]+'</button>').join("");
+  $("tabs").onclick=e=>{const s=e.target.dataset.s;if(!s)return;
+    TABS.forEach(t=>$(t[1]).classList.toggle("hide",t[1]!==s));
+    [...$("tabs").children].forEach(b=>b.classList.toggle("on",b.dataset.s===s));};
+  $("periods").innerHTML=PER.map(p=>'<button data-p="'+p[1]+'" class="'+(p[1]===per?"on":"")+'">'+p[0]+'</button>').join("");
+  $("periods").onclick=e=>{const p=e.target.dataset.p;if(!p)return;per=p;
+    [...$("periods").children].forEach(b=>b.classList.toggle("on",b.dataset.p===p));render();};
 }
-function cutoff(d){
-  if(d<0)return 0;const t=new Date();t.setHours(0,0,0,0);
-  return t.getTime()/1000-d*86400;
+function tbl(obj,labelFn){
+  const rows=Object.entries(obj||{}).sort((a,b)=>b[1].pct-a[1].pct);
+  return rows.map(([k,v])=>'<tr><td>'+labelFn(k)+'</td><td>'+v.n+'</td><td>'+v.wr+'٪</td><td class="'+cls(v.pct)+'">'+f1(v.pct)+'</td></tr>').join("")||'<tr><td colspan=4>داده‌ای نیست</td></tr>';
 }
 function render(){
-  const c=cutoff(P[per][1]);
-  const all=data.signals||[];
-  const closed=all.filter(s=>["win","loss","be"].includes(s.result)&&(s.closed_at||0)>=c);
-  const w=closed.filter(s=>s.result==="win").length,l=closed.filter(s=>s.result==="loss").length;
-  const tot=closed.reduce((a,s)=>a+(s.final_pct||0),0);
-  const wr=closed.length?w/closed.length*100:0;
+  if(!D)return;
+  const r=D.reports[per]||{total:{n:0,wr:0,pct:0}};
+  const t=r.total;
   $("stats").innerHTML=[
-    ["وین‌ریت",wr.toFixed(0)+"٪",wr>=50?"g":"r"],
-    ["برایند",fmt(tot),tot>=0?"g":"r"],
-    ["معاملات بسته",closed.length+" ("+w+" برد / "+l+" باخت)",""],
-    ["باز / در انتظار",all.filter(s=>s.status==="open"||s.status==="pending").length,"y"]
-  ].map(x=>'<div class="c"><small>'+x[0]+'</small><b class="'+x[2]+'">'+x[1]+'</b></div>').join("");
-  const inP=all.filter(s=>(s.opened_at||0)>=c||s.status==="open"||s.status==="pending");
-  $("rows").innerHTML=inP.sort((a,b)=>(b.opened_at||0)-(a.opened_at||0)).slice(0,300).map(s=>{
-    const[t,col]=status(s);
-    const d=s.opened_at?new Date(s.opened_at*1000).toLocaleString("fa-IR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
-    const res=s.final_pct!=null&&s.result?'<b class="'+(s.final_pct>=0?"g":"r")+'">'+fmt(s.final_pct)+'</b>':"—";
-    return"<tr><td>"+d+"</td><td>"+String(s.symbol||"").replace("USDT","")+"</td><td>"+(s.tf||"")+"</td><td>"+(s.side===-1?"Short":"Long")+"</td><td>"+(+s.entry).toPrecision(6)+"</td><td>"+(+s.sl).toPrecision(6)+'</td><td><span class="tag" style="background:'+col+'">'+t+"</span></td><td>"+res+"</td></tr>";
-  }).join("");
+    ["معاملات بسته",t.n],["وین‌ریت",t.wr+"٪"],["برایند",f1(t.pct)],
+    ["باز / در انتظار",(D.live||[]).length]
+  ].map(x=>'<div class="c"><small>'+x[0]+'</small><b>'+x[1]+'</b></div>').join("");
+  $("by_symbol").innerHTML=tbl(r.by_symbol,k=>k);
+  $("by_tf").innerHTML=tbl(r.by_tf,k=>k);
+  $("by_side").innerHTML=tbl(r.by_side,k=>k);
+  $("by_hour").innerHTML=tbl(r.by_hour,k=>k.padStart(2,"0")+":00");
+  $("by_weekday").innerHTML=tbl(r.by_weekday,k=>k);
 }
-function setState(){
-  const on=!!data.enabled;
-  $("state").innerHTML='<span class="state" style="background:'+(on?"#16a34a":"#6b7280")+'">ربات: '+(on?"روشن":"خاموش")+'</span>';
-}
-$("tabs").innerHTML=P.map((p,i)=>'<button data-i="'+i+'">'+p[0]+"</button>").join("");
-$("tabs").onclick=e=>{const i=e.target.dataset.i;if(i!=null){per=+i;mark();render()}};
-function mark(){[...$("tabs").children].forEach((b,i)=>b.classList.toggle("on",i===per))}
-mark();
 function load(){
-  fetch("data.json?t="+Date.now()).then(r=>r.json()).then(d=>{
-    data=d;setState();render();
-    $("upd").textContent="آخرین به‌روزرسانی: "+new Date(d.generated_at*1000).toLocaleString("fa-IR");
-  }).catch(()=>{$("rows").innerHTML="<tr><td colspan=8>داده‌ای پیدا نشد</td></tr>"});
+  fetch("data.json?t="+Date.now()).then(x=>x.json()).then(d=>{
+    D=d;
+    $("badge").innerHTML='<span class="badge" style="background:'+(d.enabled?"#16a34a":"#6b7280")+'">سیگنال: '+(d.enabled?"روشن":"خاموش")+'</span> <span class="badge" style="background:'+(d.trade_enabled?"#dc2626":"#6b7280")+'">معامله: '+(d.trade_enabled?"روشن":"خاموش")+'</span>';
+    $("live").innerHTML=(d.live||[]).map(x=>'<tr><td>'+x.symbol+'</td><td>'+x.tf+'</td><td>'+x.status+'</td><td>'+(+x.entry).toPrecision(6)+'</td><td>'+(x.price?(+x.price).toPrecision(6):"—")+'</td><td>'+f1(x.dist_to_entry_pct)+'</td><td>'+f1(x.dist_to_sl_pct)+'</td><td>'+((x.hit_tps||[]).filter(Boolean).length)+'</td></tr>').join("")||'<tr><td colspan=8>معامله‌ی باز یا در انتظاری نیست</td></tr>';
+    $("closed").innerHTML=(d.recent_closed||[]).slice(0,50).map(x=>'<tr><td>'+x.symbol+'</td><td>'+x.tf+'</td><td>'+x.side+'</td><td>'+(x.result==="win"?"برد":x.result==="loss"?"باخت":"سر به سر")+'</td><td class="'+cls(x.final_pct)+'">'+f1(x.final_pct)+'</td></tr>').join("")||'<tr><td colspan=5>—</td></tr>';
+    $("sug").innerHTML=(d.suggestions||[]).map(x=>'<tr><td>'+x.symbol+'</td><td>'+x.tf+'</td><td>'+String(x.hour).padStart(2,"0")+':00</td><td>'+x.n+'</td><td>'+x.wr+'٪</td><td class="'+cls(x.pct)+'">'+f1(x.pct)+'</td></tr>').join("")||'<tr><td colspan=6>هنوز نمونه‌ی کافی نیست</td></tr>';
+    render();
+    $("upd").textContent="آخرین به‌روزرسانی: "+new Date(d.generated_at*1000).toLocaleString("fa-IR")+" (هر ۵ دقیقه)";
+  }).catch(()=>{$("upd").textContent="داده‌ای پیدا نشد"});
 }
-load();
+tabs();load();
 </script>
 </body>
 </html>
