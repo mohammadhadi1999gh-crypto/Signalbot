@@ -13,6 +13,7 @@ Rules (as given by the user, with the definitions chosen here):
   TP1 = entry - 1R, TP2 = entry - 2R, TP3 = min(MSS low, entry - 3R).
 Signal only. This module never places exchange orders.
 """
+import re
 import os
 import time
 
