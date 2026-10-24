@@ -1223,17 +1223,30 @@ def build_message(sym, tf, sig, info):
 
 STATUS_TEXT = {
     "pending": "🦭 فعال نشده",
-    "open": "✅💯 فعال شده",
+    "open": "🔥⚡️ فعال شده — وارد معامله شدیم",
     "cancelled": "❌ کنسل شده",
 }
 
 
-def status_win_text(pct):
-    return f"✅ بسته شده با سود «{pct:.1f}% سود»"
+def _tp_reached(pos):
+    """بالاترین TP که زده شده (۰ اگر هیچ‌کدام)."""
+    n = 0
+    for i, hit in enumerate(pos.get("hit_tps") or []):
+        if hit:
+            n = i + 1
+    return n
 
 
-def status_loss_text(pct):
-    return f"🔴 بسته شده «{abs(pct):.1f}% ضرر»"
+def status_win_text(pct, tp_n=0):
+    if tp_n:
+        return f"🏆 بسته شده با TP{tp_n} و {pct:.1f}% سود 💰"
+    return f"🏆 بسته شده با {pct:.1f}% سود 💰"
+
+
+def status_loss_text(pct, by_sl=False):
+    if by_sl:
+        return f"🛑 حدضرر خورد — بسته شده با {abs(pct):.1f}% ضرر 📉"
+    return f"🔴 بسته شده با {abs(pct):.1f}% ضرر 📉"
 
 
 # ----------------------------------------------------------------------------
@@ -1309,12 +1322,15 @@ def post_status(pos, text, dry):
         except Exception as e:  # noqa
             log.error("status send failed %s: %s", cid, e)
             continue
-        if CFG.pin_status:
+        # فقط «فعال شدن» و «بسته شدن» (سود/ضرر/سر به سر) پین می‌شوند؛ کنسل و بقیه پین نمی‌شوند
+        pin_it = ("بسته شده" in text) or ("گرفته شد" in text) or ("فعال شده" in text and "کنسل" not in text)
+        if pin_it and CFG.pin_status:
             prev = status_msgs.get(cid)
             if prev:
                 tg_unpin(cid, prev)
             tg_pin(cid, mid)
-        status_msgs[cid] = mid
+        if pin_it:
+            status_msgs[cid] = mid
 
 
 # ----------------------------------------------------------------------------
@@ -1540,7 +1556,7 @@ def scan_tf(tf, dry=False):
             except Exception as e:  # noqa
                 log.error("chart failed %s: %s", sym, e)
         base = sym[:-4] if sym.endswith("USDT") else sym
-        cap = f"📈 چارت #{base} | {tf} | Trendline Break + Retest"
+        cap = f"📈 چارت #{base} | {tf} | FVG Sweep + MSS + Retest"
 
         if dry:
             print("\n" + "=" * 40 + "\n" + msg + "\n" + "=" * 40)
@@ -1730,17 +1746,17 @@ def _notify_event(pos, ev, dry, trades_log):
             else:
                 _reply_all(pos, "⚠️ باز کردن معامله‌ی دمو ناموفق بود (جزئیات در لاگ).", dry)
     elif t == "tp":
-        txt = (f"🎯 TP{ev['i'] + 1} فعال شد ✅\n{tag}\n"
+        txt = (f"🎯 TP{ev['i'] + 1} گرفته شد 🚀\n{tag}\n"
                f"سود این پله: {ev['step_pct']:.1f}% (سهم {int(ev['weight'] * 100)}٪ حجم)")
         if ev.get("sl_moved_to") is not None:
             txt += f"\n🔒 استاپ منتقل شد به {fp(ev['sl_moved_to'])} (ریسک‌فری)"
-        _reply_all(pos, txt, dry)
+        post_status(pos, txt, dry)
     elif t == "closed":
         pct = ev["pct"]
         if ev["result"] == "win":
-            txt = status_win_text(pct)
+            txt = status_win_text(pct, _tp_reached(pos))
         elif ev["result"] == "loss":
-            txt = status_loss_text(pct)
+            txt = status_loss_text(pct, by_sl=(ev.get("reason") == "sl"))
         else:
             txt = "⚪️ بسته شده در نقطه‌ی سر به سر (۰٪)"
         _reply_all(pos, f"{txt}\n{tag}", dry)
