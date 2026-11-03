@@ -1338,6 +1338,8 @@ def post_status(pos, text, dry):
 # ----------------------------------------------------------------------------
 STATE_PATH = os.path.join(HERE, "state.json")
 POSITIONS_PATH = os.path.join(HERE, "positions.json")
+SIGNALS_LOG_PATH = os.path.join(HERE, "signals_log.jsonl")  # همه‌ی سیگنال‌ها و تغییر وضعیت‌ها
+TEHRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 TRADES_LOG_PATH = os.path.join(HERE, "trades_log.json")
 
 
@@ -1567,6 +1569,7 @@ def scan_tf(tf, dry=False):
         if not chats:
             continue
         sent[k] = tt
+        _log_new_signal(sym, tf, sig)
 
         pos_id = f"{sym}|{tf}|{sig['side']}|{tt}"
         pos = {
@@ -1729,11 +1732,45 @@ def _close_trade(pos, result, pct, trades_log):
     })
 
 
+def _append_signals_log(row):
+    try:
+        with open(SIGNALS_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+    except Exception as e:  # noqa
+        log.error("signals log write failed: %s", e)
+
+
+def _log_new_signal(sym, tf, sig):
+    _append_signals_log({
+        "ts": datetime.now(TEHRAN_TZ).isoformat(timespec="seconds"),
+        "event": "new_signal", "symbol": sym, "tf": tf,
+        "side": "SHORT" if sig.get("side") == -1 else "LONG",
+        "entry": sig.get("entry"), "sl": sig.get("sl"), "tps": sig.get("tps"),
+        "fvg": bool(sig.get("fvg")), "score": sig.get("score"), "rr_r": sig.get("R"),
+    })
+
+
+def _log_status_event(pos, ev):
+    row = {
+        "ts": datetime.now(TEHRAN_TZ).isoformat(timespec="seconds"),
+        "event": ev.get("type"), "symbol": pos.get("symbol"), "tf": pos.get("tf"),
+        "side": "SHORT" if pos.get("side") == -1 else "LONG",
+        "opened_at": pos.get("opened_at"), "entry": pos.get("entry"),
+        "sl": pos.get("sl"), "tps": pos.get("tps"), "hit_tps": pos.get("hit_tps"),
+    }
+    for k in ("i", "pct", "result", "reason", "step_pct"):
+        if k in ev:
+            row[k] = ev[k]
+    _append_signals_log(row)
+
+
 def _notify_event(pos, ev, dry, trades_log):
     """رویداد شبیه‌ساز را به پیام تلگرام/لاگ معاملات تبدیل می‌کند."""
     side = pos["side"]
     tag = f"#{pos['symbol']} | {'SHORT' if side == -1 else 'LONG'}"
     t = ev["type"]
+    if not dry:
+        _log_status_event(pos, ev)
     if t == "activated":
         post_status(pos, STATUS_TEXT["open"], dry)
         if CFG.okx_demo_trading and not dry and pos["symbol"] != CFG.gold_symbol:
