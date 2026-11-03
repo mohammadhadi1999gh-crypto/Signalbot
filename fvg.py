@@ -108,6 +108,22 @@ def install(bot):
                         max_score=len(comp) + 1, fvg=True)
         return None
 
+    BLOCK_SYM = {x.strip().upper().replace('USDT', '') for x in os.getenv('BLOCK_SYMBOLS', '').split(',') if x.strip()}
+    BLOCK_TF = {x.strip() for x in os.getenv('BLOCK_TFS', '').split(',') if x.strip()}
+
+    _ab = {'t': 0, 'set': set()}
+
+    def _auto_blocked():
+        now = time.time()
+        if now - _ab['t'] > 60:
+            try:
+                import auto_block
+                _ab['set'] = {x.replace('USDT', '') for x in auto_block.blocked_symbols()}
+            except Exception as e:  # noqa
+                print('auto block load failed', e)
+            _ab['t'] = now
+        return _ab['set']
+
     MIN_VOL = float(os.getenv('FVG_MIN_VOL_USDT', '5000000'))
     _elig = {'t': 0, 'set': None}
 
@@ -144,6 +160,10 @@ def install(bot):
             return None  # old gold strategy removed
         if tf not in TFS or bot.perf_gate_blocked(tf):
             return None
+        if tf in BLOCK_TF or sym.upper().replace('USDT', '') in BLOCK_SYM:
+            return None  # manual block list (BLOCK_SYMBOLS / BLOCK_TFS)
+        if sym.upper().replace('USDT', '') in _auto_blocked():
+            return None  # automatic block (auto_block.py / blocked.json)
         if not eligible(sym):
             return None
         import controls
