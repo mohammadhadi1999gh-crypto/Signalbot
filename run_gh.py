@@ -18,6 +18,8 @@ if os.getenv('STRAT_MODE', 'fvg') == 'fvg':
 
 import controls  # noqa: E402
 import dashboard_data  # noqa: E402
+import auto_block  # noqa: E402
+import daily_report  # noqa: E402
 import features  # noqa: E402
 import learner  # noqa: E402
 
@@ -27,12 +29,20 @@ DOCS = os.path.join(bot.HERE, 'docs')
 def main():
     controls.handle_commands()
     s = controls.load_settings()
+    try:
+        auto_block.update()
+    except Exception as e:  # noqa
+        print('auto block failed', e)
     if s.get('signals_enabled') and controls.in_hours(s):
         bot.once(False)
     else:
         bot.monitor_positions(False)
     features.record_outcomes()
     learner.run_and_notify()
+    try:
+        daily_report.run()
+    except Exception as e:  # noqa
+        print("daily report failed", e)
 
     os.makedirs(DOCS, exist_ok=True)
     data = dashboard_data.build(s, s.get('signals_enabled'), bot.last_price)
