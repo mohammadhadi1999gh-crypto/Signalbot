@@ -23,6 +23,18 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: install playwright (analysis PDF)
+        continue-on-error: true
+        run: pip install playwright==1.47.0
+      - name: cache chromium
+        continue-on-error: true
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-chromium-1.47.0
+      - name: install chromium
+        continue-on-error: true
+        run: python -m playwright install chromium
       - name: restore state
         uses: actions/cache/restore@v4
         with:
